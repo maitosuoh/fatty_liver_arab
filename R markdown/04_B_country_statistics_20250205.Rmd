@@ -1,0 +1,862 @@
+---
+title: "MAFLD"
+output: html_document
+date: "2024-06-17"
+---
+
+```{r}
+library(bibliometrix)
+library(tidyverse)
+library(janitor)
+library(sf)
+library(countrycode)
+library(rnaturalearth)
+library(rmapshaper)
+library(CoordinateCleaner)
+library(patchwork)
+library(cowplot)
+library(fpp3)
+```
+
+
+```{r}
+df_cn_long <- readRDS("../wos/df/df_cn_long")
+```
+
+
+```{r}
+dir.create("../figure", showWarnings = TRUE, recursive = FALSE, mode = "0777")
+```
+
+```{r}
+dir.create("../plot", showWarnings = TRUE, recursive = FALSE, mode = "0777")
+```
+
+
+
+```{r}
+colnames(df_cn_long)
+```
+
+```{r}
+df_cn_long <- df_cn_long %>%
+  mutate(CN = case_when(CN %in% c("England", "North Ireland", "Scotland", "Wales") ~ "United Kingdom",
+                        .default = CN) )
+```
+
+```{r}
+df_cn_long <- df_cn_long %>%
+  mutate(PY = as.character(PY))
+```
+
+
+```{r}
+df_cc <- df_cn_long %>%
+  distinct(UI, CN, .keep_all = TRUE) %>% ungroup() %>%
+  mutate(CC = countrycode(CN, origin = "country.name", destination = "country.name")) %>%
+  mutate(ISO3C = countrycode(CN, origin = "country.name", destination = "iso3c"))
+```
+
+```{r}
+df_cc <- df_cc %>%
+  mutate(CC = case_when(CC == "Palestinian Territories" ~ "Palestine",
+                        CC == "United Arab Emirates" ~ "UAE",
+                        .default = CC))
+```
+
+
+```{r}
+cc_arab <- c("Algeria", "Bahrain", "Comoros", "Djibouti", "Egypt", 
+             "Iraq", "Jordan", "Kuwait","Lebanon", "Libya", 
+             "Mauritania", "Morocco", "Oman", "Palestine", "Qatar",
+             "Saudi Arabia", "Somalia", "Sudan", "Syria", "Tunisia",
+             "UAE", "Yemen")
+```
+
+
+
+```{r}
+# missing countries
+setdiff(cc_arab, df_cc$CN)
+
+# UAE was changed to abbreviation
+```
+
+
+```{r}
+df_cc_full <- df_cc %>%
+  mutate(CC = factor(CC, levels = cc_arab)) %>%
+  filter(CC %in% cc_arab) %>%
+  count(CC)
+  
+```
+
+```{r}
+df_cc_full <- df_cc_full%>%
+  bind_rows(tibble(CC = c("Comoros", "Djibouti", "Mauritania", "Somalia"),
+                   m= c(rep(0, 4))))
+```
+
+```{r}
+df_cc_full <- df_cc_full %>%
+  mutate(ISO3C = countrycode(CC, origin = "country.name", destination = "iso3c"))
+```
+
+
+```{r}
+df_cc_full %>%
+  filter(n > 0) %>%
+  ggplot(aes(n, fct_reorder(CC, n))) +
+  geom_col(width = 0.7, fill = "#377eb8")+
+ 
+  geom_text(aes(x = n +5,label = n), hjust = 0, vjust = 0.5, size = 2.8)+
+  scale_x_continuous(expand = c(0, 0),
+                     breaks = c(seq(0, 700, 100), 50 ),
+                     limits = c(0, 700))+
+   labs(x = "Publication count", y = "Country", tag = "")+
+  theme_classic()+
+  coord_cartesian(clip = "off")+
+  theme(plot.tag = element_text(size = 12, colour = "black", face="bold"),
+        title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.text = element_text(size = 8, colour = "black"),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        plot.margin = unit(c(0,5,0,0), "mm"))
+
+
+```
+
+```{r}
+df_cc_sm <- df_cc %>%
+  distinct(UI, CC, .keep_all = TRUE) %>%
+  ungroup() %>%
+  group_by(UI) %>%
+  mutate(CN_n = n()) %>%
+  mutate(SM = if_else(CN_n == 1, "Single", "Multiple")) %>%
+  ungroup() %>%
+  count(SM, CC) %>%
+  filter(CC %in% cc_arab)
+```
+
+```{r}
+order_cc_full <- df_cc_full %>%
+  filter(!is.na(n)) %>%
+  arrange(n) %>%
+  pull(CC)
+
+order_cc_full 
+```
+
+
+```{r}
+# bar chart for Arab countries with breakdown into author country 
+
+p_count_arab <- df_cc_sm %>%
+  mutate(CC = factor(CC, levels = order_cc_full)) %>%
+  ggplot(aes(n, CC, fill = SM))+
+  geom_col(width = 0.6)+
+  geom_text(data = df_cc_full %>% filter(!is.na(n)),
+            aes(x = n + 5, CC, label = n),
+            size = 2.8, colour = "black", 
+            hjust = 0, vjust = 0.5,
+            inherit.aes = FALSE)+
+  scale_fill_manual(values = c("#ff7f00", "#377eb8"),
+                    breaks = c("Single", "Multiple"),
+                    name = "Author country")+
+  coord_cartesian(clip = "off")+
+  scale_x_continuous(expand = c(0, 0),
+                     breaks = c(seq(0, 700, 100)),
+                     limits = c(0, 700))+
+  labs(x = "Publication count", y = "Country",
+       tag = "A")+
+  theme_classic()+
+  theme(plot.tag = element_text(size = 12, face="bold"),
+        title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.text = element_text(size = 8, colour = "black"),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        legend.title = element_text(size = 8, colour = "black", face = "bold"),
+        legend.text = element_text(size = 8, colour = "black"),
+        legend.position = "inside",
+        legend.justification.inside = c(1, 0.5),
+        legend.key.size = unit(1, "line"),
+        plot.margin = unit(c(0,5,0,0), "mm"))
+
+p_count_arab
+```
+```{r}
+saveRDS(p_count_arab, "../plot/p_count_arab")
+```
+
+
+
+```{r}
+tsbl_cc_arab <- df_cc %>%
+  distinct(UI, CC, .keep_all = TRUE) %>%
+  ungroup() %>%
+  count(PY, CC) %>%
+  filter(CC %in% cc_arab) %>%
+  mutate(PY = paste(PY, "-01-01")) %>%
+  mutate(PY = ymd(PY)) %>%
+  as_tsibble(index = PY, key = CC)
+```
+
+
+```{r}
+tsbl_cc_arab %>%
+  filter(CC %in% rev(order_cc_full)[1:5]) %>% View()
+```
+
+```{r}
+df_cc_arab_fill <- map(rev(order_cc_full)[1:5], function(x){
+  
+  tsbl_cc_arab %>%
+    mutate(PY = year(PY)) %>%
+    filter(CC == x) %>%
+    fill_gaps(n = 0)
+  
+}) %>% list_rbind()
+```
+
+```{r}
+class(df_cc_arab_fill)
+```
+
+```{r}
+df_cc_arab_fill %>% filter(n == max(n))
+```
+
+
+```{r}
+p_count_arab5 <- df_cc_arab_fill %>%
+  mutate(PY = as.numeric(PY)) %>%
+  ggplot(aes(PY, n, colour = CC, group = CC)) +
+  geom_line(linewidth = 0.3)+
+  
+  scale_colour_manual(values = c("#e41a1c", "#377eb8", "#4daf4a", "#ff7f00", "#984ea3"),
+                    breaks = c(rev(order_cc_full)[1:5]),
+                    labels = c(rev(order_cc_full)[1:5]),
+                    name = "Country",
+                    guide = guide_legend(override.aes = list(size = 2.8,
+                                                             linewidth = 0.5)))+
+  scale_x_continuous(
+                     breaks = seq(2006, 2024, 1),
+                     limits = c(2006, 2024))+
+  scale_y_continuous(
+                     breaks = seq(0, 120, 30),
+                     limits = c(0, 120))+
+  labs(x = "Year", y = "Publication count", tag = "B")+
+  theme_classic()+
+  theme(plot.tag = element_text(size = 12, face="bold"),
+        title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.text.x = element_text(size = 8, colour = "black",
+                                   angle = 90, hjust = 0.5, vjust = 0.5),
+        axis.text.y = element_text(size = 8, colour = "black"),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        legend.title = element_text(size = 8, colour = "black", face = "bold"),
+        legend.text = element_text(size = 8, colour = "black"),
+        legend.position = "inside",
+        legend.justification.inside = c(0.05, 1),
+        legend.key.size = unit(1, "line"),
+        plot.margin = unit(c(0,5,0,0), "mm"))
+
+p_count_arab5 
+```
+
+```{r}
+saveRDS(p_count_arab5, "../plot/p_count_arab5")
+```
+
+
+```{r}
+# fractional count
+
+df_cc %>%
+  group_by(UI) %>%
+  mutate(WT = 1/n()) %>%
+  ungroup() %>%
+  group_by(CC) %>%
+  summarise(SUM = sum(WT)) %>%
+  filter(CC %in% cc_arab) %>%
+  ggplot(aes(SUM, fct_reorder(CC, SUM))) +
+  geom_col(width = 0.7, fill = "#377eb8")+
+  labs(x = "Publication count", y = "Country")+
+  scale_x_continuous(expand = c(0, 0),
+                     breaks = c(seq(0, 500, 100)),
+                     limits = c(0, 500))+
+  theme_classic()+
+  theme(plot.tag = element_text(size = 12, face="bold"),
+        title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.text = element_text(size = 8, colour = "black"),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        plot.margin = unit(c(0,5,0,0), "mm"))
+           
+```
+
+```{r}
+# year
+df_cc %>%
+  distinct(UI, .keep_all = TRUE) %>%
+  count(PY) %>%
+  mutate(PY = as.character(PY)) %>%
+  ggplot(aes(PY, n))+
+  geom_col(width= 0.7, fill = "#377eb8")+
+  scale_y_continuous(expand = c(0, 0),
+                     breaks = seq(0, 300, 100),
+                     limits = c(0, 300))+
+  labs(x = "Year", y = "Publication count")+
+  theme_classic()+
+  theme(plot.tag = element_text(size = 12, face="bold"),
+        title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.text.x = element_text(size = 8, colour= "black", angle = 90, vjust = 0.5 ,hjust = 1),
+        axis.text.y = element_text(size = 8, colour = "black"),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        plot.margin = unit(c(5,5,5,5), "mm"))
+```
+
+
+
+```{r}
+df_n_total <- df_cc %>%
+  distinct(UI, .keep_all = TRUE) %>%
+  count(PY) %>%
+  mutate(PY = as.character(PY))
+```
+
+
+```{r}
+# publication type
+p_count_year <- df_cc %>%
+  distinct(UI, .keep_all = TRUE) %>%
+  count(DT, PY) %>%
+  mutate(PY = as.character(PY)) %>%
+  mutate(DT = factor(DT, levels = c("Editorial_Letter", "Review", "Article"))) %>%
+  ggplot(aes(PY, n, fill = DT))+
+  geom_col(width = 0.6)+
+  geom_text(data = df_n_total %>% rename(n_full = "n"),
+            aes(x = PY, y = n_full +5, label = n_full),
+            hjust = 0.5, vjust = 0, size = 2.8,
+            inherit.aes = FALSE)+
+  scale_fill_manual(values = c("#4daf4a", "#ff7f00", "#984ea3"),
+                    breaks = c("Article", "Review", "Editorial_Letter"),
+                    labels = c("Article", "Review", "Editorial/Letter"),
+                    name = "Type")+
+  # guides(fill = guide_legend(override.aes = list(size = 1))) +
+  scale_y_continuous(expand = c(0, 0),
+                     breaks = seq(0, 300, 100),
+                     limits = c(0, 300))+
+  labs(x = "Year", y = "Publication count", tag = "B")+
+  theme_classic()+
+  theme(plot.tag = element_text(size = 12, face="bold"),
+        title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.text.x = element_text(size = 8, angle = 90, vjust = 0.5 ,hjust = 1, colour = "black"),
+        axis.text.y = element_text(size = 8, colour = "black"),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        legend.title = element_text(size = 8, colour = "black", face = "bold"),
+        legend.text = element_text(size = 8, colour = "black"),
+        legend.background = element_blank(),
+        legend.position = "inside",
+        legend.justification.inside = c(0.05, 1),
+        legend.key.size = unit(1, "line"),
+        #legend.position.inside = c(0.15, 0.85),
+        plot.margin = unit(c(0,0,0,0), "mm"))
+
+p_count_year
+```
+
+```{r}
+saveRDS(p_count_year, "../plot/p_count_year")
+```
+
+```{r}
+saveRDS(df_cc, "../wos/df/df_cc")
+```
+
+
+
+
+# end of run
+
+
+```{r}
+# publication type
+df_cc %>%
+  filter(DT == "Article") %>%
+  distinct(UI, .keep_all = TRUE) %>%
+  count(PY) %>%
+  mutate(PY = as.character(PY)) %>%
+  ggplot(aes(PY, n))+
+  geom_col(width = 0.7, fill = "#4daf4a")+
+    scale_y_continuous(expand = c(0, 0),
+                     breaks = seq(0, 200, 100),
+                     limits = c(0, 200))+
+  labs(x = "Year", y = "Publication count")+
+  theme_classic()+
+  theme(plot.tag = element_text(size = 12, face="bold"),
+        title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.text.x = element_text(size = 8, angle = 90, vjust = 0.5 ,hjust = 1),
+        axis.text.y = element_text(size = 8, colour = "black"),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        legend.title = element_text(size = 8, colour = "black", face = "bold"),
+        legend.text = element_text(size = 8, colour = "black"),
+        plot.margin = unit(c(5,0,0,0), "mm"))
+```
+
+```{r}
+# publication type
+df_cc %>%
+  filter(DT == "Review") %>%
+  distinct(UI, .keep_all = TRUE) %>%
+  count(PY) %>%
+  mutate(PY = as.character(PY)) %>%
+  ggplot(aes(PY, n))+
+  geom_col(width = 0.7, fill = "#ff7f00")+
+    scale_y_continuous(expand = c(0, 0),
+                     breaks = seq(0, 80, 20),
+                     limits = c(0, 80))+
+  labs(x = "Year", y = "Publication count")+
+  theme_classic()+
+  theme(plot.tag = element_text(size = 12, face="bold"),
+        title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.text.x = element_text(size = 8, angle = 90, vjust = 0.5 ,hjust = 1),
+        axis.text.y = element_text(size = 8, colour = "black"),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        legend.title = element_text(size = 8, colour = "black", face = "bold"),
+        legend.text = element_text(size = 8, colour = "black"),
+        plot.margin = unit(c(5,0,0,0), "mm"))
+```
+
+```{r}
+df_cc %>%
+  filter(DT == "Review") %>%
+  distinct(UI, .keep_all = TRUE) %>%
+  count(PY) %>%
+  mutate(PY = as.character(PY)) %>%
+  ggplot(aes(PY, n))+
+  geom_col(width = 0.7, fill = "#984ea3")+
+    scale_y_continuous(expand = c(0, 0),
+                     breaks = seq(0, 80, 20),
+                     limits = c(0, 80))+
+  labs(x = "Year", y = "Publication count")+
+  theme_classic()+
+  theme(plot.tag = element_text(size = 12, face="bold"),
+        title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.text.x = element_text(size = 8, angle = 90, vjust = 0.5 ,hjust = 1),
+        axis.text.y = element_text(size = 8, colour = "black"),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        legend.title = element_text(size = 8, colour = "black", face = "bold"),
+        legend.text = element_text(size = 8, colour = "black"),
+        plot.margin = unit(c(5,0,0,0), "mm"))
+```
+
+
+```{r}
+df_cc %>%
+  distinct(UI, .keep_all = TRUE) %>%
+  count(DT, PY) %>%
+  mutate(PY = as.character(PY)) %>%
+  ggplot(aes(PY, n, group = DT, colour = DT))+
+  geom_line()+
+  scale_colour_manual(values = c("#4daf4a", "#ff7f00", "#984ea3"),
+                    breaks = c("Article", "Review", "Editorial_Letter"),
+                    labels = c("Article", "Review", "Editorial/Letter"),
+                    name = "Type",
+                    guide = guide_legend(override.aes = list(size = 2.8,
+                                                             linewidth = 0.5)))+
+      scale_y_continuous(expand = c(0, 0),
+                     breaks = seq(0, 200, 50),
+                     limits = c(0, 200))+
+  labs(x = "Year", y = "Publication count")+
+  theme_classic()+
+   theme(plot.tag = element_text(size = 12, face="bold"),
+        title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.text.x = element_text(size = 8, angle = 90, vjust = 0.5 ,hjust = 1),
+        axis.text.y = element_text(size = 8, colour = "black"),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        legend.title = element_text(size = 8, colour = "black", face = "bold"),
+        legend.text = element_text(size = 8, colour = "black"),
+        legend.background = element_blank(),
+        legend.margin = margin(0, 0, 0, 0, "mm"),
+        legend.position = "inside",
+        legend.justification.inside = c(0.05, 1),
+        #legend.position.inside = c(0.15, 0.85),
+        plot.margin = unit(c(5,5,5,5), "mm"))
+```
+
+```{r}
+p2_b <- df_cc %>%
+  distinct(UI, .keep_all = TRUE) %>%
+  count(DT, PY) %>%
+  mutate(PY = as.character(PY)) %>%
+  bind_rows(df_n_total %>% mutate(DT = "Total")) %>%
+  ggplot(aes(PY, n, group = DT, colour = DT))+
+  geom_line()+
+  scale_colour_manual(values = c("#e41a1c", "#4daf4a", "#ff7f00", "#984ea3"),
+                    breaks = c("Total","Article", "Review", "Editorial_Letter"),
+                    labels = c("Total", "Article", "Review", "Editorial/Letter"),
+                    name = "Type",
+                    guide = guide_legend(override.aes = list(size = 2.8,
+                                                             linewidth = 0.5)))+
+      scale_y_continuous(expand = c(0, 0),
+                     breaks = seq(0, 300, 100),
+                     limits = c(0, 300))+
+  labs(x = "Year", y = "Publication count")+
+  theme_classic()+
+   theme(plot.tag = element_text(size = 12, face="bold"),
+        title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.text.x = element_text(size = 8, angle = 90, vjust = 0.5 ,hjust = 1, colour = "black"),
+        axis.text.y = element_text(size = 8, colour = "black"),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        legend.title = element_text(size = 8, colour = "black", face = "bold"),
+        legend.text = element_text(size = 8, colour = "black"),
+        legend.background = element_blank(),
+        legend.margin = margin(0, 0, 0, 0, "mm"),
+        legend.position = "inside",
+        legend.justification.inside = c(0.05, 1),
+        #legend.position.inside = c(0.15, 0.85),
+        plot.margin = unit(c(0,0,0,0), "mm"))
+
+p2_b
+```
+
+```{r}
+df_cc %>%
+  distinct(UI, .keep_all = TRUE) %>%
+  count(CC, PY) %>%
+  filter(CC %in% cc_arab) %>% View()
+```
+
+
+
+```{r}
+df_cc %>%
+  distinct(UI, .keep_all = TRUE) %>%
+  count(CC, PY) %>%
+  
+  mutate(PY = as.character(PY)) %>%
+  bind_rows(df_n_total %>% mutate(DT = "Total")) %>%
+  ggplot(aes(PY, n, group = DT, colour = DT))+
+  geom_line()+
+  scale_colour_manual(values = c("#e41a1c", "#4daf4a", "#ff7f00", "#984ea3"),
+                    breaks = c("Total","Article", "Review", "Editorial_Letter"),
+                    labels = c("Total", "Article", "Review", "Editorial/Letter"),
+                    name = "Type",
+                    guide = guide_legend(override.aes = list(size = 2.8,
+                                                             linewidth = 0.5)))+
+      scale_y_continuous(expand = c(0, 0),
+                     breaks = seq(0, 300, 100),
+                     limits = c(0, 300))+
+  labs(x = "Year", y = "Publication count")+
+  theme_classic()+
+   theme(plot.tag = element_text(size = 12, face="bold"),
+        title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.text.x = element_text(size = 8, angle = 90, vjust = 0.5 ,hjust = 1, colour = "black"),
+        axis.text.y = element_text(size = 8, colour = "black"),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        legend.title = element_text(size = 8, colour = "black", face = "bold"),
+        legend.text = element_text(size = 8, colour = "black"),
+        legend.background = element_blank(),
+        legend.margin = margin(0, 0, 0, 0, "mm"),
+        legend.position = "inside",
+        legend.justification.inside = c(0.05, 1),
+        #legend.position.inside = c(0.15, 0.85),
+        plot.margin = unit(c(0,0,0,0), "mm"))
+```
+
+
+
+
+```{r}
+# publication type
+df_cc %>%
+  distinct(UI, .keep_all = TRUE) %>%
+  count(DT, PY) %>%
+  ggplot(aes(PY, n))+
+  geom_col()+
+  facet_grid(cols= vars(DT))+
+  theme_classic()+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
+```
+
+
+
+
+```{r}
+# publication from each country
+
+plot_cc_all <- function(x){
+  df_cc %>%
+  filter(CC == x) %>%
+  distinct(CC, UI, .keep_all = TRUE) %>%
+  ungroup() %>%
+  count(CC, PY) %>%
+    mutate(n = as.double(n)) %>%
+    mutate(PY = factor(PY, levels = as.character(c(2006:2024)))) %>%
+  ggplot(aes(PY, n))+
+  geom_col(width = 0.7, fill = "#377eb8")+
+    scale_x_discrete(breaks = as.character(2006:2024),
+                     limits = as.character(2006:2024))+
+    scale_y_continuous(expand = c(0, 0))+
+  labs(title = x,
+       x = "Year",
+       y = "Publication count")+
+  theme_classic()+
+  theme(plot.tag = element_text(size = 12, face="bold"),
+        plot.title = element_text(size = 8, colour = "black", face = "bold", hjust=0.5),
+        axis.title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.text.x = element_text(size = 8, angle = 90, vjust = 0.5 ,hjust = 0.5, colour = "black"),
+        axis.text.y = element_text(size = 8, colour = "black"),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        legend.title = element_text(size = 8, colour = "black", face = "bold"),
+        legend.text = element_text(size = 8, colour = "black"),
+        plot.margin = unit(c(5,0,0,0), "mm"))
+}
+```
+
+```{r}
+#p_cc_all <- map(cc_arab, plot_cc_all)
+```
+
+```{r}
+#for (i in 1:length(cc_arab)){
+# ggsave(filename = paste0("../figure/cc_all/", cc_arab[i], ".png"),
+#        plot = p_cc_all[[i]]) 
+#}
+```
+
+
+```{r}
+#plot_cc_all[[13]]
+```
+
+```{r}
+plot_cc_dt <- function(x){
+  df_cc %>%
+  filter(CC == x) %>%
+  distinct(CC, UI, .keep_all = TRUE) %>%
+  ungroup() %>%
+  count(CC, PY, DT) %>%
+    mutate(n = as.double(n)) %>%
+    mutate(PY = factor(PY, levels = as.character(c(2006:2024)))) %>%
+    mutate(DT = factor(DT, levels = c("Editorial_Letter", "Review", "Article"))) %>%
+  ggplot(aes(PY, n, fill = DT))+
+  geom_col(width = 0.7)+
+    scale_fill_manual(values = c("#4daf4a", "#ff7f00", "#984ea3"),
+                    breaks = c("Article", "Review", "Editorial_Letter"),
+                    labels = c("Article", "Review", "Editorial/Letter"),
+                    name = "Type")+
+    scale_x_discrete(breaks = as.character(2006:2024),
+                     limits = as.character(2006:2024))+
+    scale_y_continuous(expand = c(0, 0))+
+  labs(title = x,
+       x = "Year",
+       y = "Publication count")+
+  theme_classic()+
+  theme(plot.tag = element_text(size = 12, face="bold"),
+        plot.title = element_text(size = 8, colour = "black", face = "bold", hjust=0.5),
+        strip.background = element_blank(),
+        strip.text = element_blank(),
+        axis.title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.text.x = element_text(size = 8, angle = 90, vjust = 0.5 ,hjust = 0.5),
+        axis.text.y = element_text(size = 8, colour = "black"),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        legend.title = element_text(size = 8, colour = "black", face = "bold"),
+        legend.text = element_text(size = 8, colour = "black"),
+        plot.margin = unit(c(5,0,0,0), "mm"))
+}
+```
+
+
+```{r}
+#p_cc_dt <- map(cc_arab, plot_cc_dt)
+```
+
+```{r}
+#p_cc_dt[[3]]
+```
+
+
+```{r}
+#for (i in 1:length(cc_arab)){
+# ggsave(filename = paste0("../figure/cc_dt/", cc_arab[i], ".png"),
+#        plot = p_cc_dt[[i]]) 
+#}
+```
+
+```{r}
+# year country
+
+# year
+df_cc %>%
+  filter(CC %in% cc_arab) %>%
+  distinct(CC, UI, .keep_all = TRUE) %>%
+  ungroup() %>%
+  count(CC, PY) %>%
+  ggplot(aes(PY, n))+
+  geom_col()+
+  facet_wrap(vars(CC), nrow = 6, ncol = 3, scales = "free_y")+
+  theme_classic()+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
+```
+
+```{r}
+# adpoting terms 
+
+df_cc %>%
+  distinct(UI, .keep_all = TRUE) %>%
+  mutate(NMFS = factor(NMFS, levels = c("NAFLD", "MAFLD", "MASLD",
+                                 "NAFLD_MAFLD", "NAFLD_MASLD", "MAFLD_MASLD",
+                                 "NAFLD_MAFLD_MASLD"))) %>%
+  count(NMFS, PY) %>%
+  ggplot(aes(PY, n, fill = NMFS))+
+  geom_col()+
+  facet_wrap(vars(NMFS), scales = "free")+
+  theme_classic()+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
+```
+
+```{r}
+df_cc %>%
+  distinct(UI, .keep_all = TRUE) %>%
+  filter(str_detect(NMFS, "NAFLD")) %>%
+  count(PY) %>%
+  ggplot(aes(PY, n))+
+  geom_col(width = 0.7, fill = "#a65628")+
+    scale_y_continuous(expand = c(0, 0),
+                     breaks = seq(0, 200, 50),
+                     limits = c(0, 200))+
+  labs(x = "Year", y = "Publication count")+
+  theme_classic()+
+  theme(plot.tag = element_text(size = 12, face="bold"),
+        title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.text.x = element_text(size = 8, angle = 90, vjust = 0.5 ,hjust = 1),
+        axis.text.y = element_text(size = 8, colour = "black"),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        legend.title = element_text(size = 8, colour = "black", face = "bold"),
+        legend.text = element_text(size = 8, colour = "black"),
+        plot.margin = unit(c(5,0,0,0), "mm"))
+```
+
+```{r}
+df_cc %>%
+  distinct(UI, .keep_all = TRUE) %>%
+  filter(str_detect(NMFS, "MAFLD")) %>%
+  count(PY) %>%
+  ggplot(aes(PY, n))+
+  geom_col(width = 0.7, fill = "#ff7f00")+
+    scale_y_continuous(expand = c(0, 0),
+                     breaks = seq(0, 50, 10),
+                     limits = c(0, 50))+
+  labs(x = "Year", y = "Publication count")+
+  theme_classic()+
+  theme(plot.tag = element_text(size = 12, face="bold"),
+        title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.text.x = element_text(size = 8, angle = 90, vjust = 0.5 ,hjust = 1),
+        axis.text.y = element_text(size = 8, colour = "black"),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        legend.title = element_text(size = 8, colour = "black", face = "bold"),
+        legend.text = element_text(size = 8, colour = "black"),
+        plot.margin = unit(c(5,0,0,0), "mm"))
+```
+
+```{r}
+df_cc %>%
+  distinct(UI, .keep_all = TRUE) %>%
+  filter(str_detect(NMFS, "MASLD")) %>%
+  count(PY) %>%
+  ggplot(aes(PY, n))+
+  geom_col(width = 0.7, fill = "#4daf4a")+
+    scale_y_continuous(expand = c(0, 0),
+                     breaks = seq(0, 80, 20),
+                     limits = c(0, 80))+
+  labs(x = "Year", y = "Publication count")+
+  theme_classic()+
+  theme(plot.tag = element_text(size = 12, face="bold"),
+        title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.text.x = element_text(size = 8, angle = 90, vjust = 0.5 ,hjust = 1),
+        axis.text.y = element_text(size = 8, colour = "black"),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        legend.title = element_text(size = 8, colour = "black", face = "bold"),
+        legend.text = element_text(size = 8, colour = "black"),
+        plot.margin = unit(c(5,0,0,0), "mm"))
+```
+
+
+```{r}
+df_cc %>%
+  distinct(UI, CC, .keep_all = TRUE) %>%
+  filter(CC %in% cc_arab) %>%
+  group_by(UI) %>%
+  mutate(CN_n = n()) %>%
+  ungroup() %>%
+  distinct(UI, .keep_all = TRUE) %>%
+  slice_max(CN_n, n = 10) %>%
+  select(PN, PMID, DI, TI)
+```
+
+
+
+
+```{r}
+df_cc %>%
+  distinct(UI, CC, .keep_all = TRUE) %>%
+  filter(CC %in% cc_arab) %>%
+  group_by(UI) %>%
+  mutate(CN_n = n()) %>%
+  ungroup() %>%
+  distinct(UI, .keep_all = TRUE) %>%
+  slice_max(CN_n, n = 10) %>%
+  mutate(TI = case_when(PMID == "39151887" ~ "Global burden of metabolic diseases, 1990-2021",
+                        .default = TI)) %>%
+  ggplot(aes(CN_n, fct_reorder(PN, CN_n)))+
+  geom_col(width = 0.7, fill = "#f781bf", alpha = 0.5)+
+  geom_text(aes(x = 15/50, label = TI), size = 2.8, hjust = 0)+
+  scale_x_continuous(expand = c(0, 0),
+                     breaks = seq(0, 15, 5),
+                     limits = c(0, 15))+
+  labs(x = "Number of countries in the Arab world",
+       y = "Publication")+
+  theme_classic()+
+   theme(plot.tag = element_text(size = 12, face="bold"),
+        title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.text = element_text(size = 8, colour = "black"),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        legend.title = element_text(size = 8, colour = "black", face = "bold"),
+        legend.text = element_text(size = 8, colour = "black"),
+        plot.margin = unit(c(0,5,0,0), "mm"))
+```
+
+
+

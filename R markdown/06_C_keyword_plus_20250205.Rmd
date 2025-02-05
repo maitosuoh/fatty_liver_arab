@@ -1,0 +1,92 @@
+---
+title: "MAFLD"
+output: html_document
+date: "2024-06-17"
+---
+
+```{r}
+library(tidyverse)
+```
+
+
+```{r}
+df_cc <- readRDS("../wos/df/df_cc")
+```
+
+```{r}
+df_kp <- df_cc %>%
+  distinct(UI, .keep_all = TRUE)
+```
+
+```{r}
+df_kp %>% filter(is.na(KP)) %>% nrow()
+```
+```{r}
+df_kp %>% filter(!is.na(KP)) %>% nrow()
+
+```
+
+
+```{r}
+df_kp_long <- df_kp %>%
+  filter(!is.na(KP)) %>%
+  separate_longer_delim(KP, delim = ";") %>%
+  mutate(KP = str_trim(KP))
+```
+
+```{r}
+# change to lower case for now
+df_kp_long <- df_kp_long %>%
+  mutate(KP = str_to_lower(KP))
+```
+
+```{r}
+df_kp_long %>%
+  distinct(UI, KP, .keep_all = TRUE) %>% 
+  ungroup() %>%
+  count(KP) %>%
+  arrange(desc(n)) %>% View()
+```
+
+
+```{r}
+p_kw_pl <- df_kp_long %>%
+  count(KP) %>%
+  slice_max(n, n = 15) %>%
+  mutate(KP = str_to_sentence(KP)) %>%
+  mutate(KP= case_when(KP == "Nafld" ~ "NAFLD",
+                       .default = KP) ) %>%
+  ggplot(aes(n, fct_reorder(KP, n)))+
+  geom_col(width = 0.6, fill = "#4daf4a")+
+  scale_x_continuous(expand = c(0, 0),
+                     breaks = seq(0, 300, 100),
+                     limits = c(0, 300))+
+  labs(x = "Count", y = "KeyWords Plus\n(Web of Science)",
+       tag = "B")+
+  theme_classic()+
+  theme(plot.tag = element_text(size = 12, face="bold"),
+        title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.text = element_text(size = 8, colour = "black"),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        legend.title = element_text(size = 8, colour = "black", face = "bold"),
+        legend.text = element_text(size = 8, colour = "black"),
+        plot.margin = unit(c(0,5,0,0), "mm"))
+
+p_kw_pl
+```
+
+```{r}
+saveRDS(p_kw_pl, "../plot/p_kw_pl")
+```
+
+
+```{r}
+#p1_a <- p1_a + plot_layout()
+
+#ggsave(filename = "../figure/keywords_plus.pdf",
+#       p1_a,
+#       width = 100, height = 100, unit = "mm")
+```
+

@@ -1,0 +1,501 @@
+---
+title: "MAFLD"
+output: html_document
+date: "2024-06-17"
+---
+
+```{r}
+library(bibliometrix)
+library(tidyverse)
+library(janitor)
+```
+
+
+```{r}
+df_wos <- readRDS("../wos/df/df_wos")
+```
+
+```{r}
+df_wos <- df_wos %>% clean_names()
+```
+
+```{r}
+df_wos %>% head()
+```
+
+
+```{r}
+df_wos %>% colnames()
+```
+
+```{r}
+# change column names
+
+df_wos <- df_wos %>%
+  rename(AU = "authors",
+         AU_full = "author_full_names",
+         TI = "article_title",
+         ST = "source_title",
+         LA = "language",
+         DT = "document_type",
+         AK = "author_keywords",
+         KP = "keywords_plus",
+         AB = "abstract",
+         AD = "addresses",
+         AF = "affiliations",
+         RA = "reprint_addresses",
+         FO = "funding_orgs",
+         FNP = "funding_name_preferred",
+         FT = "funding_text",
+         CRC = "cited_reference_count",
+         TC_wos = "times_cited_wo_s_core",
+         TC_all = "times_cited_all_databases",
+         ISSN = "issn",
+         ISSN_e = "e_issn",
+         JR_abb = "journal_abbreviation",
+         JR_iso = "journal_iso_abbreviation",
+         PY = "publication_year",
+         DI = "doi",
+         CAT_wos = "wo_s_categories",
+         RE = "research_areas",
+         PMID = "pubmed_id",
+         OA = "open_access_designations",
+         UI = "ut_unique_wos_id",
+)
+```
+
+
+
+```{r}
+# format title
+gsub_dash <- function(x){
+  x <- gsub("\\p{Pd}", "-", x, perl=TRUE)
+  x <- gsub("−", "-", x)
+  return(x)
+}
+```
+
+```{r}
+# change everything to character for now
+
+df_wos <- df_wos %>% mutate(across(where(is.character), gsub_dash))
+```
+
+```{r}
+# change citation to numeric
+
+df_wos <- df_wos %>% mutate(across(starts_with("TC"), as.numeric))
+```
+
+
+```{r}
+df_wos %>% filter(str_detect(AD, "Somalia")) %>% View()
+
+# Composition and therapeutic use of camel milk
+# Italian
+# only "fatty liver disease" as a general term
+```
+
+
+```{r}
+# doi duplicates
+df_wos %>% filter(!is.na(DI)) %>% group_by(DI) %>% filter(n()>1) %>% nrow()
+
+# pmid duplicates
+df_wos %>% filter(!is.na(PMID)) %>% group_by(PMID) %>% filter(n()>1) %>% nrow()
+
+# same title
+df_wos %>% filter(!is.na(TI)) %>% group_by(TI) %>% filter(n()>1) %>% nrow()
+  
+```
+
+```{r}
+# duplicated based on title, abbreviation
+df_wos %>% filter(!is.na(JR_abb)) %>% 
+  group_by(JR_abb, TI) %>%
+  filter(n()>1) %>%
+  select(DI, PMID) %>% View()
+
+# has different ids keep
+```
+
+```{r}
+# change title and abstract to upper case
+
+df_wos <- df_wos %>%
+  mutate(AB_up = AB,
+         TI_up = TI) %>%
+  mutate(across(c(AB_up, TI_up), ~ str_to_upper(.x)))
+```
+
+
+```{r}
+nafld <- c("nafld", 
+           "non-alcoholic fatty liver disease",
+           "non alcoholic fatty liver disease",
+           "nonalcoholic fatty liver disease")
+```
+
+```{r}
+# do not include nash to avoid non-specific match
+nash_char <-  nafld[nafld != "nafld"] %>%
+  str_replace("fatty liver disease", "steatohepatitis") %>%
+  str_to_upper()
+
+nafld_char <- nafld %>% str_to_upper()
+
+nash_regex <- c("^NASH[[:blank:][:punct:]]",
+          "[[:blank:][:punct:]]NASH[[:blank:][:punct:]]",
+          "[[:blank:][:punct:]]NASH$")
+```
+
+```{r}
+nafl_char <-  nafld[nafld != "nafld"] %>%
+  str_replace("fatty liver disease", "fatty liver")
+
+nafl_char <- c("nafl", nafl_char) %>% str_to_upper()
+```
+
+
+```{r}
+nafld_nash_nafl_query <- c(nafld_char, nash_char, nash_regex, nafl_char) %>% paste0(collapse = "|")
+nafld_nash_nafl_query 
+```
+
+
+```{r}
+mafld <- c("mafld",
+           "metabolic dysfunction associated fatty liver disease",
+           "metabolic-dysfunction associated fatty liver disease",
+           "metabolic dysfunction-associated fatty liver disease",
+           "metabolic-dysfunction-associated fatty liver disease",
+           "metabolic \\(dysfunction\\) associated fatty liver disease",
+           "metabolic-\\(dysfunction\\) associated fatty liver disease",
+           "metabolic \\(dysfunction\\)-associated fatty liver disease",
+           "metabolic-\\(dysfunction\\)-associated fatty liver disease",
+           "metabolic-associated fatty liver disease",
+           "metabolic associated fatty liver disease")
+```
+
+```{r}
+mafld <- mafld %>% str_to_upper()
+```
+
+```{r}
+mafld_query <- paste0(mafld, collapse = "|")
+
+mafld_query 
+```
+
+
+
+```{r}
+masld <-  c("masld",
+            "metabolic dysfunction associated steatotic liver disease",
+           "metabolic-dysfunction associated steatotic liver disease",
+           "metabolic dysfunction-associated steatotic liver disease",
+           "metabolic-dysfunction-associated steatotic liver disease",
+           "metabolic \\(dysfunction\\) associated steatotic liver disease",
+           "metabolic-\\(dysfunction\\) associated steatotic liver disease",
+           "metabolic \\(dysfunction\\)-associated steatotic liver disease",
+           "metabolic-\\(dysfunction\\)-associated steatotic liver disease",
+           "metabolic-associated steatotic liver disease",
+           "metabolic associated steatotic liver disease")
+```
+
+```{r}
+# do not include nash to avoid non-specific match
+mash_char <-  masld[masld != "masld"] %>%
+  str_replace("steatotic liver disease", "steatohepatitis") %>%
+  str_to_upper()
+
+masld_char <- masld %>% str_to_upper()
+
+mash_regex <- c("^MASH[[:blank:][:punct:]]",
+          "[[:blank:][:punct:]]MASH[[:blank:][:punct:]]",
+          "[[:blank:][:punct:]]MASH$")
+
+masld_query <- masld_char %>% paste0(collapse = "|")
+  
+mash_query <- c(mash_char, mash_regex) %>% paste0(collapse = "|")
+```
+
+
+
+```{r}
+nafld_nash_nafl_query
+mafld_query
+masld_query
+mash_query
+```
+
+```{r}
+mafld_query
+```
+
+
+```{r}
+masld_query
+```
+
+
+```{r}
+mash_query
+```
+
+```{r}
+df_wos <- df_wos %>%
+  mutate(NF = case_when( str_detect(TI_up, nafld_nash_nafl_query) |  str_detect(AB_up, nafld_nash_nafl_query) ~ 1,
+                         .default = 0)) %>%
+  mutate(MF = case_when( str_detect(TI_up, mafld_query) |  str_detect(AB_up, mafld_query) ~ 1,
+                         .default = 0)) %>%
+  mutate(MASLD = case_when( str_detect(TI_up, masld_query) |  str_detect(AB_up, masld_query) ~ 1,
+                         .default = 0)) %>%
+  mutate(MASH = case_when( str_detect(TI_up, mash_query) |  str_detect(AB_up, mash_query) ~ 1,
+                         .default = 0)) %>%
+  mutate(METALD = case_when( str_detect(TI_up, "METALD") |  str_detect(AB_up, "METALD") ~ 1,
+                         .default = 0))
+```
+
+```{r}
+colnames(df_wos)
+```
+
+
+```{r}
+df_wos %>%
+  select(NF, MF, MASLD, MASH, METALD) %>%
+  summarise(across(c(NF, MF, MASLD, MASH, METALD), ~ sum(.)))
+```
+
+```{r}
+# lets check MASH
+
+df_wos %>% filter(MASH == 1) %>% count(PY) 
+```
+
+```{r}
+# MASH in 2021
+
+df_wos %>% filter(MASH == 1 & PY == "2021") %>% View() 
+
+# MAFLD/MASH -> ignore MASH
+```
+
+```{r}
+df_wos <- df_wos %>%
+  mutate(MASH = case_when(MASH == 1 & PY == "2021" ~ 0,
+                          .default = MASH))
+```
+
+
+
+```{r}
+df_wos <- df_wos %>%
+  mutate(MS = case_when( MASLD == 1 | MASH == 1 | METALD == 1 ~ 1,
+                         .default = 0))
+```
+
+
+```{r}
+# 1 NAFLD alone 
+# 2 MAFLD alone
+# 3 MASLD alone
+# 4 NAFLD and MAFLD
+# 5 NAFLD and MASLD
+# 6 MAFLD and MASLD
+# 7 NAFLD MAFLD MASLD
+# 0 otherwise (no specific term)
+
+df_wos <- df_wos %>%
+  mutate(NMFS = case_when( NF == 1 & MF == 0 & MS == 0 ~ "NAFLD",
+                           NF == 0 & MF == 1 & MS == 0 ~ "MAFLD",
+                           NF == 0 & MF == 0 & MS == 1 ~ "MASLD",
+                           NF == 1 & MF == 1 & MS == 0 ~ "NAFLD_MAFLD",
+                           NF == 1 & MF == 0 & MS == 1 ~ "NAFLD_MASLD",
+                           NF == 0 & MF == 1 & MS == 1 ~ "MAFLD_MASLD",
+                           NF == 1 & MF == 1 & MS == 1 ~ "NAFLD_MAFLD_MASLD",
+                           NF == 0 & MF == 0 & MS == 0 ~ "0"))
+```
+
+```{r}
+# check how many are "0"
+
+df_wos %>% count(NMFS)
+```
+
+
+```{r}
+df_wos %>% filter(NMFS == "0") %>% select(TI, AB) %>% View()
+```
+
+
+```{r}
+nrow(df_wos)
+
+df_nmfs <- df_wos %>% filter(NMFS != "0")
+
+nrow(df_nmfs)
+```
+
+```{r}
+print(2252-1408)
+```
+
+
+```{r}
+# year 2024
+df_nmfs %>% count(PY)
+```
+
+```{r}
+# keep until 2024
+
+nrow(df_nmfs)
+
+df_nmfs <- df_nmfs %>%
+  mutate(PY = as.numeric(PY)) %>%
+  filter(PY <= 2024)
+
+nrow(df_nmfs)
+```
+
+```{r}
+# remonved by year
+
+print(1408-1402)
+```
+
+
+```{r}
+#language
+df_nmfs %>% count(LA)
+```
+
+```{r}
+# only keep English
+
+nrow(df_nmfs)
+
+df_nmfs <- df_nmfs %>% filter(LA == "English")
+
+nrow(df_nmfs)
+```
+
+```{r}
+# removed based on language
+print(1402 - 1397)
+```
+
+
+```{r}
+# publication type document_type
+df_nmfs %>% count(DT)
+```
+
+
+```{r}
+df_nmfs %>% filter(str_detect(DT, "Proceedings Paper"))  %>% View()
+```
+
+
+```{r}
+# remove pure meeting abstract/proceedings paper
+
+nrow(df_nmfs)
+
+df_nmfs <- df_nmfs %>% filter(!str_detect(DT, "Meeting Abstract|Proceedings Paper")) 
+
+nrow(df_nmfs)
+```
+
+```{r}
+# publication type document_type
+df_nmfs %>% count(DT)
+```
+
+
+```{r}
+# removed 
+
+print(1397 - 1260)
+```
+
+```{r}
+# remove Retracted, Correction, Withdrawal
+
+nrow(df_nmfs)
+
+df_nmfs <- df_nmfs %>% filter(!str_detect(DT, "Retracted|Correction|Withdrawal")) 
+
+nrow(df_nmfs)
+
+```
+
+```{r}
+# removed by Retracted, Correction, Withdrawal
+print(1260 - 1252)
+```
+
+```{r}
+# total removed by pub type
+
+print( 1397 - 1252)
+```
+
+
+```{r}
+# remove everything after ;
+
+df_nmfs <- df_nmfs %>% mutate(DT = str_remove(DT, "\\;.+")) 
+```
+
+
+```{r}
+# publication type document_type
+df_nmfs %>% count(DT)
+```
+
+```{r}
+# combine editorial and letter
+
+df_nmfs <- df_nmfs %>% 
+  mutate(DT = case_when(str_detect(DT, "Editorial|Letter") ~ "Editorial_Letter",
+                        .default = as.character(DT)))
+```
+
+
+```{r}
+# publication type document_type
+df_nmfs %>% count(DT)
+```
+
+```{r}
+# total removed
+nrow(df_wos)- nrow(df_nmfs)
+
+```
+```{r}
+# disase term 844
+# year 6
+# Language 5
+# Pub type 145
+
+print(844 + 6+ 5+ 145)
+```
+
+
+# create Publication name
+
+```{r}
+df_nmfs <- df_nmfs %>%
+  mutate(AU_1 = str_extract(AU, "^[^\\;]+(?=\\;)")) %>%
+  mutate(PN = str_c(AU_1, " (" , PY , ")"))
+```
+
+
+```{r}
+saveRDS(df_nmfs, "../wos/df/df_nmfs")
+```
+
+

@@ -1,0 +1,67 @@
+---
+title: "MAFLD"
+output: html_document
+date: "2024-06-17"
+---
+
+```{r}
+library(tidyverse)
+library(readxl)
+```
+
+
+```{r}
+rds_name <- list.files("../wos/rds")
+rds_name
+```
+
+```{r}
+rds_path <- paste0("../wos/rds/", rds_name)
+rds_path
+```
+
+```{r}
+# create function to  count the number of records in each file
+count_record <- function(name, path){
+  df <- readRDS(path)
+  return(tibble(file = name, n_row = nrow(df)))
+}
+```
+
+```{r}
+# check records in each wos rds
+df_wos_count <- map2(rds_name, rds_path, count_record) %>% list_rbind()
+df_wos_count
+# the same as reported by wos
+```
+
+```{r}
+dir.create("../wos/df", showWarnings = TRUE, recursive = FALSE, mode = "0777")
+```
+
+
+```{r}
+# combine and save wos RDS
+map(rds_path, readRDS) %>% list_rbind() %>%
+  saveRDS("../wos/df/df_wos")
+```
+
+```{r}
+df_wos<- readRDS("../wos/df/df_wos")
+```
+
+```{r}
+df_wos %>% nrow()
+```
+
+```{r}
+colnames(df_wos)
+```
+
+
+```{r}
+df_wos %>% 
+  rename(UT = "UT (Unique WOS ID)") %>%
+  distinct(UT) %>% nrow()
+```
+

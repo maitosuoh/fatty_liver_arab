@@ -1,0 +1,809 @@
+---
+title: "MAFLD"
+output: html_document
+date: "2024-06-17"
+---
+
+```{r}
+library(bibliometrix)
+library(tidyverse)
+library(janitor)
+library(countrycode)
+```
+
+
+```{r}
+df_cc <- readRDS("../wos/df/df_cc")
+```
+
+
+
+```{r}
+df_ak <- df_cc %>%
+  distinct(UI, .keep_all = TRUE)
+```
+
+```{r}
+df_ak %>% filter(!is.na(AK)) %>% nrow()
+```
+
+
+```{r}
+df_ak_long <- df_ak %>%
+  filter(!is.na(AK)) %>%
+  separate_longer_delim(AK, delim = ";") %>%
+  mutate(AK = str_trim(AK))
+```
+
+```{r}
+# change to lower case for now
+df_ak_long <- df_ak_long %>%
+  mutate(AK = str_to_lower(AK))
+```
+
+```{r}
+df_ak_long %>%
+  distinct(UI, AK, .keep_all = TRUE) %>% 
+  ungroup() %>%
+  count(AK) %>%
+  arrange(desc(n)) %>% View()
+```
+
+
+```{r}
+df_ak_long %>%
+  count(AK) %>%
+  slice_max(n, n = 40) %>%
+  ggplot(aes(n, fct_reorder(AK, n)))+
+  geom_col(width = 0.7)+
+  theme_classic()
+```
+
+
+```{r}
+nafld <- c("non-alcoholic fatty liver disease",
+           "non alcoholic fatty liver disease",
+           "nonalcoholic fatty liver disease")
+
+nafld_query <- paste0(nafld, collapse = "|")
+nafld_query
+```
+```{r}
+df_ak_long %>% 
+  filter(str_detect(AK, nafld_query)) %>%
+  count(AK)
+
+# exclude activity, nanoparticles, and steatohepatitis
+```
+
+```{r}
+df_ak_long <- df_ak_long %>% 
+  mutate(AK = case_when(str_detect(AK, nafld_query) &
+                          (!str_detect(AK, "activity|nanoparticles|steatohepatitis")) ~ "nafld",
+                                                       .default = AK))
+```
+
+```{r}
+# nash
+
+nash_query <- nafld %>% 
+  str_replace("fatty liver disease", "steatohepatitis") %>%
+  paste0(collapse = "|")
+
+nash_query
+```
+```{r}
+df_ak_long %>% 
+  filter(str_detect(AK, nash_query)) %>%
+  count(AK)
+# exclude fatty liver disease
+```
+
+
+```{r}
+# format nash
+df_ak_long <- df_ak_long %>% 
+  mutate(AK = case_when(str_detect(AK, nash_query) &
+                          (!str_detect(AK, "fatty liver disease")) ~ "nash",
+                                                       .default = AK))
+```
+
+```{r}
+# other fatty liver disease
+
+df_ak_long %>% 
+  filter(str_detect(AK, "fatty liver disease")) %>%
+  count(AK)
+```
+
+```{r}
+mafld <- c(
+           "metabolic dysfunction associated fatty liver disease",
+           "metabolic-dysfunction associated fatty liver disease",
+           "metabolic dysfunction-associated fatty liver disease",
+           "metabolic-dysfunction-associated fatty liver disease",
+           "metabolic \\(dysfunction\\) associated fatty liver disease",
+           "metabolic-\\(dysfunction\\) associated fatty liver disease",
+           "metabolic \\(dysfunction\\)-associated fatty liver disease",
+            "metabolic-\\(dysfunction\\)-associated fatty liver disease",
+           "metabolic-associated fatty liver disease",
+           "metabolic associated fatty liver disease")
+
+mafld_query <- paste0(mafld, collapse = "|")
+```
+
+```{r}
+df_ak_long %>% 
+  filter(str_detect(AK, mafld_query)) %>%
+  count(AK)
+# exclude nafld
+```
+
+```{r}
+# format nash
+df_ak_long <- df_ak_long %>% 
+  mutate(AK = case_when(str_detect(AK, mafld_query) &
+                          (!str_detect(AK, "nafld|metabolic fatty liver disease")) ~ "mafld",
+                                                       .default = AK))
+```
+
+```{r}
+masld <-  c(
+            "metabolic dysfunction associated steatotic liver disease",
+           "metabolic-dysfunction associated steatotic liver disease",
+           "metabolic dysfunction-associated steatotic liver disease",
+           "metabolic-dysfunction-associated steatotic liver disease",
+           "metabolic \\(dysfunction\\) associated steatotic liver disease",
+           "metabolic-\\(dysfunction\\) associated steatotic liver disease",
+           "metabolic \\(dysfunction\\)-associated steatotic liver disease",
+           "metabolic-\\(dysfunction\\)-associated steatotic liver disease",
+           "metabolic-associated steatotic liver disease",
+           "metabolic associated steatotic liver disease")
+
+masld_query <- paste0(masld, collapse = "|")
+```
+
+```{r}
+df_ak_long %>% 
+  filter(str_detect(AK, masld_query)) %>%
+  count(AK)
+# exclude nafld
+```
+
+```{r}
+# format masld
+df_ak_long <- df_ak_long %>% 
+  mutate(AK = case_when(str_detect(AK, masld_query) &
+                          (!str_detect(AK, "glp-1 ra|grading")) ~ "masld",
+                                                       .default = AK))
+```
+
+
+```{r}
+# MASH
+
+mash_query <- masld %>% 
+  str_replace("steatotic liver disease", "steatohepatitis") %>%
+  paste0(collapse = "|")
+
+mash_query
+```
+```{r}
+df_ak_long %>% 
+  filter(str_detect(AK, mash_query)) %>%
+  count(AK)
+```
+
+```{r}
+# format mash
+df_ak_long <- df_ak_long %>% 
+  mutate(AK = case_when(AK == "metabolic dysfunction-associated steatohepatitis" ~ "mash",
+                                                       .default = AK))
+```
+
+
+```{r}
+df_ak_long %>%  filter(str_detect(AK, "nafld")) %>% count(AK)
+```
+
+```{r}
+df_ak_long %>%  filter(str_detect(AK, "nash")) %>% count(AK)
+```
+
+```{r}
+df_ak_long %>%  filter(str_detect(AK, "mafld")) %>% count(AK)
+```
+
+```{r}
+df_ak_long %>%  filter(str_detect(AK, "masld")) %>% count(AK)
+```
+
+```{r}
+df_ak_long %>%  filter(str_detect(AK, "mash")) %>% count(AK)
+```
+
+
+```{r}
+# non-alcoholic fatty liver
+nafl <- nafld %>% str_remove(" disease")
+
+nafl_query <- c("^nafl$", nafl) %>% paste0(collapse = "|")
+
+nafl_query 
+  
+```
+```{r}
+df_ak_long %>% 
+  filter(str_detect(AK, nafl_query ) ) %>%
+  count(AK)
+```
+
+```{r}
+nafl <- c("nafl", nafld %>% str_remove(" disease"))
+
+nafl
+```
+```{r}
+df_ak_long %>% 
+  filter(AK %in% nafl ) %>%
+  count(AK)
+```
+
+```{r}
+df_ak_long <- df_ak_long %>% 
+  mutate(AK = case_when(AK %in% nafl ~ "non-alcoholic fatty liver",
+                        .default = AK))
+```
+
+
+
+```{r}
+df_ak_long %>% 
+  filter(str_detect(AK, "hepatocellular carcinoma|hcc") ) %>%
+  count(AK)
+```
+
+```{r}
+df_ak_long <- df_ak_long %>% 
+  mutate(AK = case_when(AK %in% c("hcc", "hepatocellular carcinoma (hcc)") ~ "hepatocellular carcinoma",
+                        .default = AK))
+```
+
+
+```{r}
+df_ak_long %>% 
+  filter(str_detect(AK, "diabetes") ) %>%
+  count(AK)
+```
+
+```{r}
+df_ak_long %>% 
+  filter(str_detect(AK, "mellitus") ) %>%
+  count(AK)
+```
+
+```{r}
+df_ak_long %>% 
+  filter(str_detect(AK, "diabetes") ) %>%
+  count(AK)
+```
+
+```{r}
+df_ak_long <- df_ak_long %>% 
+  mutate(AK = case_when(AK == "diabetes mellitus" ~ "diabetes",
+                        .default = AK))
+```
+
+```{r}
+df_ak_long <- df_ak_long %>% 
+  mutate(AK = case_when(AK %in% c("diabetes mellitus type 2",
+                                  "diabetes type 2",
+                                  "type 2 diabetes (t2d)",
+                                  "type 2 diabetes mellitus",
+                                  "type 2 diabetes mellitus (t2dm)",
+                                  "type ii diabetes",
+                                  "type ii diabetes mellitus",
+                                  "type-2 diabetes",
+                                  "type-2 diabetes mellitus",
+                                  "type-2-diabetes",
+                                  "type2 diabetes mellitus") ~ "type 2 diabetes",
+                        .default = AK))
+```
+
+
+```{r}
+df_ak_long %>% 
+  filter(str_detect(AK, "diabetes") ) %>%
+  count(AK)
+```
+
+```{r}
+df_ak_long <- df_ak_long %>% 
+  mutate(AK = case_when(AK %in% c("pre-diabetes") ~ "prediabetes",
+                        AK %in% c("type1 diabetes") ~ "type 1 diabetes",
+                        .default = AK))
+```
+
+```{r}
+df_ak_long %>% 
+  filter(str_detect(AK, "dm") ) %>%
+  count(AK)
+```
+
+```{r}
+df_ak_long <- df_ak_long %>% 
+  mutate(AK = case_when(AK == "dm" ~ "diabetes",
+                        AK == "t1dm" ~ "type 1 diabetes",
+                        AK == "t2dm" ~ "type 2 diabetes",
+                        .default = AK))
+```
+
+
+```{r}
+df_ak_long %>% 
+  filter(str_detect(AK, "cvd|cardiovascular disease") ) %>%
+  count(AK)
+```
+```{r}
+df_ak_long <- df_ak_long %>% 
+  mutate(AK = case_when(str_detect(AK, "cvd") ~ "cardiovascular disease",
+                        AK == "cardiovascular diseases" ~ "cardiovascular disease",
+                        .default = AK))
+```
+
+
+```{r}
+# metabolic
+
+df_ak_long %>% 
+  filter(str_detect(AK, "metabolic") ) %>%
+  count(AK)
+```
+```{r}
+# metabolic syndrome
+
+df_ak_long %>% 
+  filter(str_detect(AK, "metabolic syndrome") ) %>%
+  count(AK)
+```
+
+```{r}
+# metabolic syndrome
+
+df_ak_long <- df_ak_long %>% 
+  mutate(AK = case_when(AK %in% c("metabolic syndrome (mets)",
+                                  "metabolic syndrome (ms)") ~ "metabolic syndrome",
+                        .default = AK))
+```
+
+```{r}
+# metabolic disease
+
+df_ak_long %>% 
+  filter(str_detect(AK, "metabolic disease") ) %>%
+  count(AK)
+```
+
+```{r}
+# metabolic disease
+
+df_ak_long <- df_ak_long %>% 
+  mutate(AK = case_when(AK == "metabolic diseases" ~ "metabolic disease",
+                        .default = AK))
+```
+
+```{r}
+# metabolic disorder
+
+df_ak_long %>% 
+  filter(str_detect(AK, "metabolic disorder") ) %>%
+  count(AK)
+```
+
+```{r}
+df_ak_long <- df_ak_long %>% 
+  mutate(AK = case_when(AK == "metabolic disorders" ~ "metabolic disorder",
+                        .default = AK))
+```
+
+
+```{r}
+df_ak_long %>% 
+  filter(str_detect(AK, "fibroscan") ) %>%
+  count(AK)
+```
+
+```{r}
+df_ak_long %>% 
+  filter(str_detect(AK, "covid|coronavirus|sars|severe respiratory") ) %>%
+  count(AK)
+```
+
+```{r}
+df_ak_long <- df_ak_long %>% 
+  mutate(AK = case_when(AK == "coronavirus disease 2019" ~ "covid-19",
+                        .default = AK))
+```
+
+
+```{r}
+df_ak_long %>% 
+  filter(str_detect(AK, "hfd|high fat|high-fat") ) %>%
+  count(AK)
+```
+```{r}
+df_ak_long <- df_ak_long %>% 
+  mutate(AK = case_when(AK %in% c("hfd", "high fat diet") ~ "high-fat diet",
+                        .default = AK))
+```
+
+
+```{r}
+df_ak_long %>% 
+  filter(str_detect(AK, "cap|transient|fibroscan") ) %>%
+  count(AK)
+```
+
+```{r}
+df_ak_long <- df_ak_long %>% 
+  mutate(AK = case_when(AK %in% c("transient elastography (te)") ~ "transient elastography",
+                        .default = AK))
+```
+
+```{r}
+df_ak_long %>% 
+  filter(str_detect(AK, "stress") ) %>%
+  count(AK)
+```
+
+```{r}
+df_ak_long <- df_ak_long %>% 
+  mutate(AK = case_when(AK %in% c("endoplasmic reticulum stress") ~ "er stress",
+                        .default = AK))
+```
+
+```{r}
+df_ak_long %>% 
+  filter(str_detect(AK, "hepatitis b|hbv") ) %>%
+  count(AK)
+```
+```{r}
+df_ak_long <- df_ak_long %>% 
+  mutate(AK = case_when(str_detect(AK, "hbv") ~ "hepatitis b virus",
+                        .default = AK))
+```
+
+
+```{r}
+df_ak_long %>% 
+  filter(str_detect(AK, "hepatitis c|hcv") ) %>%
+  count(AK)
+```
+
+```{r}
+df_ak_long <- df_ak_long %>% 
+  mutate(AK = case_when(AK %in% c("hepatitis c virus (hcv)",
+                                  "hcv") ~ "hepatitis c virus",
+                        AK == "chronic hepatitis c (chc)" ~ "chronic hepatitis c",
+                        .default = AK))
+```
+
+```{r}
+df_ak_long %>% 
+  filter(str_detect(AK, "bmi|body mass index") ) %>%
+  count(AK)
+```
+```{r}
+df_ak_long %>% 
+  count(AK) %>%
+  arrange(desc(n)) %>% View()
+```
+
+
+```{r}
+df_ak_long %>% 
+  filter(str_detect(AK, "microbiome|microbiota") ) %>%
+  count(AK)
+```
+
+
+```{r}
+df_ak_long %>% 
+  filter(str_detect(AK, "risk factor") ) %>%
+  count(AK)
+```
+```{r}
+df_ak_long %>% 
+  filter(str_detect(AK, "risk") ) %>%
+  count(AK)
+```
+
+```{r}
+df_ak_long %>% 
+  filter(str_detect(AK, "biomarker") ) %>%
+  count(AK)
+```
+
+```{r}
+# biomarker -> biomarkers
+df_ak_long <- df_ak_long %>% 
+  mutate(AK = case_when(AK == "biomarker" ~ "biomarkers",
+                        .default = AK))
+```
+
+
+```{r}
+df_ak_long %>% 
+  filter(str_detect(AK, "probiotic") ) %>%
+  count(AK)
+```
+
+```{r}
+# biomarker -> biomarkers
+df_ak_long <- df_ak_long %>% 
+  mutate(AK = case_when(AK == "probiotic" ~ "probiotics",
+                        .default = AK))
+```
+
+
+```{r}
+df_ak_long %>% 
+  filter(str_detect(AK, "microrna|mirna|mi-rna") ) %>%
+  count(AK)
+```
+
+```{r}
+df_ak_long <- df_ak_long %>% 
+  mutate(AK = case_when(AK %in% c("micrornas (mirnas)",
+                                  "micro rnas (mirna)",
+                                  "mirna") ~ "microrna",
+                        .default = AK))
+```
+
+
+```{r}
+df_ak_long %>% 
+  filter(str_detect(AK, "meta-analysis|metaanalysis") ) %>%
+  count(AK)
+```
+```{r}
+df_ak_long %>% 
+  filter(str_detect(AK, "probiotic") ) %>%
+  count(AK)
+```
+
+```{r}
+df_ak_long %>% 
+  filter(str_detect(AK, "vitamin") ) %>%
+  count(AK)
+```
+
+```{r}
+df_ak_long <- df_ak_long %>% 
+  mutate(AK = case_when(AK == "vitamin 'd'" ~ "vitamin d",
+                        .default = AK))
+```
+
+```{r}
+df_ak_long %>% 
+  filter(str_detect(AK, "fatty acid|lipid") ) %>%
+  count(AK)
+```
+
+```{r}
+df_ak_long %>% 
+  filter(str_detect(AK, "trans") & str_detect(AK, "fatty") & str_detect(AK, "acid") ) %>%
+  count(AK)
+```
+
+
+```{r}
+df_ak_long <- df_ak_long %>% 
+  mutate(AK = case_when(AK %in% c("trans-fatty acid",
+                                  "trans-fatty acids",
+                                  "trans-fatty acids (tfa)") ~ "trans fatty acids",
+                        .default = AK))
+```
+
+
+```{r}
+df_ak_long %>% 
+  count(AK) %>%
+  arrange(desc(n)) %>%
+  View()
+```
+
+```{r}
+df_ak_long %>% 
+  filter(str_detect(AK, "ast") | 
+           str_detect(AK, "alt") | 
+           str_detect(AK, "transferase") |
+           str_detect(AK, "transaminase")) %>%
+  count(AK)
+```
+
+```{r}
+df_ak_long <- df_ak_long %>% 
+  mutate(AK = case_when(AK %in% c("alanine aminotransferase",
+                                  "alanine transaminase") ~ "alt",
+                        .default = AK)) %>%
+  mutate(AK = case_when(AK %in% c("aspartate aminotransferase",
+                                  "aspartate aminotransferases") ~ "ast",
+                        .default = AK))
+```
+
+```{r}
+df_ak_long %>% 
+  filter(str_detect(AK, "tumour|tumor|tnf") ) %>%
+  count(AK)
+```
+
+```{r}
+df_ak_long <- df_ak_long %>% 
+  mutate(AK = case_when(AK %in% c("tumor necrosis factor-alpha",
+                                  "tumour necrosis factor alpha") ~ "tnf-alpha",
+                        .default = AK))
+```
+
+```{r}
+df_ak_long %>% 
+  filter(str_detect(AK, "interleukin|il-|il[:digit:]") ) %>%
+  count(AK) %>% View()
+```
+
+
+```{r}
+df_ak_long %>% 
+  filter(str_detect(AK, "receptor") ) %>%
+  count(AK) 
+
+# ppar
+# lxr
+# tlr
+```
+
+
+```{r}
+df_ak_long %>% 
+  filter(str_detect(AK, "ppar|peroxisome") ) %>%
+  count(AK) 
+```
+
+```{r}
+df_ak_long <- df_ak_long %>% 
+  mutate(AK = case_when(AK %in% c("peroxisome proliferator-activated receptor",
+                                  "peroxisome proliferator-activated receptors",
+                                  "peroxisome-proliferator activated receptors") ~ "ppar",
+                        AK %in% c("ppar alpha") ~ "ppar-alpha",
+                        .default = AK))
+```
+
+```{r}
+df_ak_long %>% 
+  filter(str_detect(AK, "peroxisome") &  str_detect(AK, "gamma")) %>%
+  count(AK) 
+```
+
+```{r}
+df_ak_long <- df_ak_long %>% 
+  mutate(AK = case_when(AK %in% c("peroxisome proliferator-activated receptor gamma",
+                                  "peroxisome proliferator-activated receptor-gamma",
+                                  "ppar(gamma)") ~ "ppar-gamma",
+                        .default = AK))
+```
+
+
+```{r}
+df_ak_long %>% 
+  filter(str_detect(AK, "fxr|farnesoid") ) %>%
+  count(AK) 
+```
+
+```{r}
+df_ak_long <- df_ak_long %>% 
+  mutate(AK = case_when(AK == "fxr" ~ "farnesoid x receptor",
+                        .default = AK))
+```
+
+```{r}
+df_ak_long %>% 
+  filter(str_detect(AK, "lxr|liver x") ) %>%
+  count(AK) 
+```
+
+```{r}
+df_ak_long <- df_ak_long %>% 
+  mutate(AK = case_when(AK == "liver x receptors" ~ "liver x receptor",
+                        .default = AK))
+```
+
+
+```{r}
+df_ak_long %>% 
+  filter(str_detect(AK, "tlr|toll") ) %>%
+  count(AK) 
+```
+
+```{r}
+# tlr4
+df_ak_long <- df_ak_long %>% 
+  mutate(AK = case_when(AK %in% c("tlr-4", "tlr4") ~ "toll-like receptor 4",
+                        .default = AK))
+```
+
+
+```{r}
+df_ak_long %>% 
+  filter(str_detect(AK, "sleeve gastrectomy") ) %>%
+  count(AK) 
+```
+```{r}
+df_ak_long <- df_ak_long %>% 
+  mutate(AK = case_when(AK == "sleeve gastrectomy (sg)" ~ "sleeve gastrectomy",
+                        .default = AK))
+```
+
+```{r}
+df_ak_long %>% 
+  filter(str_detect(AK, "adenosine|amp") ) %>%
+  count(AK) 
+```
+
+```{r}
+df_ak_long <- df_ak_long %>% 
+  mutate(AK = case_when(AK %in% c("adenosine monophosphate-activated protein kinase",
+                                  "amp- activated protein kinase",
+                                  "amp-activated protein kinase (ampk)") ~ "ampk",
+                        .default = AK))
+```
+
+
+```{r}
+p_au_kw_count <- df_ak_long %>%
+  count(AK) %>%
+  slice_max(n, n = 15) %>%
+  mutate(AK = str_to_sentence(AK)) %>%
+  mutate(AK = case_when(AK == "Nafld" ~ "NAFLD",
+                        AK == "Nash" ~ "NASH", 
+                        AK == "Mafld" ~ "MAFLD",
+                        AK == "Masld" ~ "MASLD",
+                      #  AK == "Hepatocellular carcinoma" ~ "HCC",
+                        .default = AK)) %>%
+  ggplot(aes(n, fct_reorder(AK, n)))+
+  geom_col(width = 0.6, fill = "#f781bf")+
+  scale_x_continuous(expand = c(0, 0),
+                     breaks = seq(0, 600, 200),
+                     limits = c(0, 600))+
+  labs(x = "Count", y = "Author keyword", tag = "A")+
+  theme_classic()+
+  theme(plot.tag = element_text(size = 12, face="bold", colour = "black"),
+        title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.text = element_text(size = 8, colour = "black"),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        legend.title = element_text(size = 8, colour = "black", face = "bold"),
+        legend.text = element_text(size = 8, colour = "black"),
+        plot.margin = unit(c(0,5,0,0), "mm"))
+
+p_au_kw_count
+```
+
+```{r}
+saveRDS(p_au_kw_count, "../plot/p_au_kw_count")
+```
+
+
+```{r}
+#p1_a <- p1_a + plot_layout()
+
+#ggsave(filename = "../figure/author_keyword.pdf",
+#       p1_a,
+#       width = 100, height = 100, unit = "mm")
+```
+
+
+```{r}
+saveRDS(df_ak_long, "../wos/df/df_ak_long")
+```
+

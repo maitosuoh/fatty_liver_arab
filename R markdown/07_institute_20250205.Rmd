@@ -1,0 +1,375 @@
+---
+title: "MAFLD"
+output: html_document
+date: "2024-06-17"
+---
+
+```{r}
+library(bibliometrix)
+library(tidyverse)
+library(janitor)
+library(countrycode)
+```
+
+
+```{r}
+df_cc <- readRDS("../wos/df/df_cc")
+```
+
+```{r}
+df_af <- df_cc %>%
+  distinct(UI, .keep_all = TRUE)
+```
+
+
+```{r}
+df_af %>% filter(is.na(AF)) %>% nrow()
+```
+
+```{r}
+df_af %>% filter(is.na(AF)) %>% View()
+```
+
+
+```{r}
+df_af_long <- df_af %>%
+  separate_longer_delim(AF, delim = ";") %>%
+  mutate(AF = str_trim(AF, side = "both"))
+```
+
+```{r}
+#p1_a <-
+df_af_long %>%
+  filter(!is.na(AF)) %>%
+  distinct(UI, AF, .keep_all = TRUE) %>%
+  ungroup() %>%
+  count(AF) %>%
+  slice_max(n, n = 30) %>%
+  ggplot(aes(n, fct_reorder(AF, n)))+
+  geom_col(width = 0.7, fill = "#ff7f00")+
+  scale_x_continuous(expand = c(0, 0),
+                     breaks = seq(0, 700, 100),
+                     limits = c(0, 700))+
+  labs(x = "Publication count", y = "Institute")+
+  theme_classic()+
+  theme(plot.tag = element_text(size = 12, face="bold"),
+        title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.text = element_text(size = 8, colour = "black"),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        legend.title = element_text(size = 8, colour = "black", face = "bold"),
+        legend.text = element_text(size = 8, colour = "black"),
+        plot.margin = unit(c(0,5,0,0), "mm"))
+
+#p1_a
+```
+
+
+```{r}
+#p1_a <- p1_a+plot_layout()
+
+#ggsave(filename = "../figure/institute_all.pdf",
+#       p1_a,
+#       width = 200, height = 200, unit = "mm")
+```
+
+
+```{r}
+
+# try getting the country for each author
+
+check_cc <- function(x){
+  
+  af_plain <- x %>% str_remove_all("\\([^\\)]+\\)") %>%
+    str_trim(side = "both")
+  
+  
+  au_cc <- df_cc %>% 
+    distinct(UI, CN, .keep_all = TRUE) %>%
+    ungroup() %>%
+    group_by(UI) %>%
+    mutate(CN_n = n()) %>%
+    ungroup() %>%
+    filter(str_detect(AF, af_plain)) %>%
+    filter(CN_n == 1) %>%
+    pull(CC) %>%
+    unique() %>%
+    return()
+  
+  df <- tibble(AF = x, CC = au_cc)
+  return(df)
+}
+```
+
+```{r}
+af_top <-  df_af_long %>%
+  distinct(UI, AF, .keep_all = TRUE) %>%
+  ungroup() %>%
+  count(AF) %>%
+  slice_max(n, n = 21) %>%
+  pull(AF)
+```
+
+```{r}
+df_cc_af <- map(af_top, check_cc) %>% list_rbind()
+
+df_cc_af <- df_cc_af %>% rename(AF_cc = "CC")
+```
+
+```{r}
+df_cc_af
+```
+
+
+```{r}
+# check national research center
+
+df_cc %>%
+  filter(UI %in% (df_af_long %>% filter(AF == "National Research Centre (NRC)") %>% pull(UI))) %>% 
+  pull(PMID) %>% unique() 
+```
+
+
+```{r}
+p_inst <- df_af_long %>%
+  distinct(UI, AF, .keep_all = TRUE) %>%
+  ungroup() %>%
+  count(AF) %>%
+  filter(AF %in% df_cc_af$AF) %>%
+  slice_max(n, n = 15) %>%
+  left_join(df_cc_af, by = join_by(AF)) %>%
+  mutate(y_label = paste0(AF, " (", AF_cc, ")" )) %>%
+  filter(!str_detect(AF, "EKB")) %>%
+  mutate(y_label = case_when(y_label == "King Faisal Specialist Hospital & Research Center (Saudi Arabia)" ~ "King Faisal Specialist Hospital &\nResearch Center (Saudi Arabia)",
+                        .default = y_label)) %>%
+  ggplot(aes(n, fct_reorder(y_label, n)))+
+    geom_col(width = 0.6, fill = "#ff7f00")+
+  scale_x_continuous(expand = c(0, 0),
+                     breaks = seq(0, 200, 50),
+                     limits = c(0, 200))+
+  labs(x = "Publication Count", y = "Institute", tag = "A")+
+  theme_classic()+
+  theme(plot.tag = element_text(size = 12, face="bold", colour = "black"),
+        title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.text = element_text(size = 8, colour = "black"),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        legend.title = element_text(size = 8, colour = "black", face = "bold"),
+        legend.text = element_text(size = 8, colour = "black"),
+        plot.margin = unit(c(0,5,0,0), "mm"))
+
+p_inst
+```
+
+```{r}
+saveRDS(p_inst , "../plot/p_inst")
+```
+
+
+# end of run
+
+```{r}
+df_af_long %>%
+    group_by(UI) %>%
+    distinct(AF, .keep_all = TRUE) %>%
+  ungroup() %>%
+  count(AF) %>%
+  arrange(desc(n)) %>%
+  View()
+```
+
+```{r}
+ak_10 <- df_ak_long %>%
+    group_by(UI) %>%
+    distinct(AK) %>%
+  ungroup() %>%
+  count(AK) %>%
+  filter(n >= 10) %>%
+  pull(AK)
+  
+#  slice_max(n, n = 70) %>%
+#  pull(AK)
+```
+
+
+
+```{r}
+mat_ak <- df_ak_long %>%
+    group_by(UI) %>%
+    distinct(AK) %>%
+    filter(AK %in% ak_10) %>%
+    ungroup() %>%
+    mutate(n = 1) %>%
+    arrange(AK) %>%
+    pivot_wider(names_from = UI, values_from = n) %>%
+    column_to_rownames(var = "AK") %>%
+    mutate(across(everything(), ~ replace_na(.x, 0))) %>%
+    as.matrix()
+```
+
+
+```{r}
+# function for obtaining co-occurrence matrix
+full_count <- function(A){
+  U <- A %*% t(A)
+  diag(U) <- 0
+  return(U)
+}
+```
+
+
+```{r}
+# calculate adjacency matrix
+adjm_ak_full <- full_count(mat_ak)
+```
+
+
+```{r}
+gr_ak_full <- adjm_ak_full %>% graph_from_adjacency_matrix(
+                                                           mode = "undirected",
+                                                           weighted = TRUE,
+                                                           diag = FALSE,
+                                                           add.colnames = NULL,
+                                                           add.rownames = NA)
+```
+
+
+```{r}
+# convert igraph object into tidygraph
+tbl_gr_ak_full <- as_tbl_graph(gr_ak_full)
+```
+
+
+```{r}
+# check for isolated nodes
+tbl_gr_ak_full %>%
+  activate(nodes) %>%
+  mutate(isolated = node_is_isolated()) %>%
+  as_tibble() %>%
+  filter(isolated == TRUE)
+```
+
+```{r}
+# remove isolated
+tbl_gr_ak_full <- tbl_gr_ak_full %>%
+  activate(nodes) %>%
+  mutate(isolated = node_is_isolated()) %>%
+  filter(isolated == FALSE)
+```
+
+
+```{r}
+# check for nodes with zero degree
+tbl_gr_ak_full %>%
+  activate(nodes) %>%
+  mutate(degree = centrality_degree(weights = weight)) %>%
+  filter(degree == 0) %>%
+  as_tibble()
+# 0
+```
+
+
+```{r}
+# remove unconnected nodes (degree = 0)
+tbl_gr_ak_full <- tbl_gr_ak_full %>%
+  activate(nodes) %>%
+  mutate(degree = centrality_degree(weights = weight))
+```
+
+```{r}
+# count the total number of publications in co-citation network
+tbl_gr_ak_full %>% activate(nodes) %>% as_tibble() %>% nrow()
+# 108
+```
+
+```{r}
+tbl_gr_ak_full %>% activate(nodes) %>% as_tibble() %>%
+  arrange(desc(degree)) %>% View()
+```
+
+
+
+```{r}
+# detect communities by Leiden algorithem, optimise modularity
+set.seed(15)
+tbl_gr_ak_full <- tbl_gr_ak_full %>%
+  mutate(group = as.character(group_leiden(weights = weight,
+                                           objective_function = "modularity")))
+```
+
+
+
+```{r}
+# check modularity
+tbl_gr_ak_full %>%
+  activate(nodes) %>%
+  mutate(modularity = graph_modularity(group=as.factor(group), weights = weight)) %>% 
+  pull(modularity) %>% 
+  head(1)
+```
+
+```{r}
+# check publication counts in each group
+tbl_gr_ak_full %>%
+  activate(nodes) %>%
+  as_tibble() %>%
+  count(group) %>%
+  arrange(desc(n))
+```
+
+```{r}
+set.seed(51)
+
+p1_a <- tbl_gr_ak_full %>%
+  activate(nodes) %>%
+  mutate(name = str_to_sentence(name)) %>%
+  mutate(name = case_when(name == "Nafld" ~ "NAFLD",
+                          name == "Nash" ~ "NASH",
+                          name == "Mafld" ~ "MAFLD",
+                          name == "Masld" ~ "MASLD",
+                          name == "Mash" ~ "MASH",
+                          name == "Covid-19" ~ "COVID-19",
+                          name == "Saudi arabia" ~ "Saudi Arabia",
+                          name == "Ampk" ~ "AMPK",
+                          name == "Er stress" ~ "ER stress",
+                          name == "Tnf-alpha" ~ "TNF-alpha",
+                          name == "Vitamin d" ~ "Vitamin D",
+                          .default = name
+                          )) %>%
+  mutate(group = as.factor(group)) %>%
+  ggraph("fr") +
+  geom_edge_link(width = 0.3, alpha = 0.3, colour = "gray65")+
+  scale_edge_colour_manual(values =  c("#ff7f00", "#4daf4a", "#377eb8", "#e41a1c", "#984ea3"),
+                           guide = "none")+
+  
+  geom_node_point(aes(size = degree), fill = "white", colour = "white", shape = 21, stroke = 0.6)+
+  geom_node_point(aes(fill = group, size = degree), colour = "gray35", shape = 21, stroke = 0.3)+
+  scale_size(range = c(1.5, 4), guide = "none")+
+  scale_fill_manual(values = c("#ff7f00", "#4daf4a", "#377eb8", "#e41a1c", "#984ea3"),
+                    name = "Keyword group")+
+  scale_colour_manual(values = c("#ff7f00", "#4daf4a", "#377eb8", "#e41a1c", "#984ea3"))+
+  geom_node_text(aes(label = name), repel = TRUE, size = 2.8)+
+  guides(fill = guide_legend(override.aes = list(size = 2.8, alpha = 1),
+                               title.position = "top"),
+         colour = "none")+
+#  labs(tag = "")+
+  theme_void()+
+  theme(legend.position = "bottom",
+        plot.tag = element_text(size = 12, face="bold"),
+        legend.title=element_text(size=8, face = "bold", hjust = 0.5), 
+        legend.text=element_text(size = 8),
+        legend.key.size = unit(0.1, 'lines'),
+        plot.margin = unit(c(0,0,0,0), "mm"))
+
+
+```
+
+
+```{r}
+ggsave("keyword_network.pdf", p1_a, width = 175, height = 175, units = "mm")
+```
+
+
+

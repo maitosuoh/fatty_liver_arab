@@ -1,0 +1,90 @@
+---
+title: "MAFLD"
+output: html_document
+date: "2024-06-17"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(bibliometrix)
+library(tidyverse)
+library(ggtext)
+library(glue)
+library(patchwork)
+library(cowplot)
+```
+
+
+```{r}
+p_count_arab <- readRDS("../plot/p_count_arab")
+
+p_count_arab5 <- readRDS("../plot/p_count_arab5")
+
+p_cite_arab <- readRDS("../plot/p_cite_arab")
+```
+
+```{r}
+p2 <- p_count_arab +
+  p_count_arab5 +
+  p_cite_arab +
+  plot_layout(nrow = 3, ncol = 1, heights = c(4, 3, 4))
+
+ggsave("../figure/Fig2.pdf", p2, width = 175, height = 235, unit = "mm")
+```
+
+```{r}
+p_inst <- readRDS("../plot/p_inst")
+
+p_author_arab <- readRDS("../plot/p_author_arab")
+
+p_jr <- readRDS("../plot/p_jr")
+```
+
+```{r}
+p3 <- p_inst +
+  p_author_arab +
+  p_jr+
+  plot_layout(nrow = 3, heights = c(17, 12, 13))
+
+ggsave("../figure/Fig3.pdf", p3, width = 175, height = 200, unit = "mm")
+```
+
+
+```{r}
+
+p_au_kw_count <- readRDS("../plot/p_au_kw_count")
+
+p_kw_pl <- readRDS("../plot/p_kw_pl")
+
+
+p_au_kw_net <- readRDS("../plot/p_au_kw_net")
+```
+
+```{r}
+p_au_kw_count 
+```
+
+
+```{r}
+p_kws <- wrap_plots(p_au_kw_count, p_kw_pl, ncol = 2)
+```
+
+```{r}
+p4 <- p_kws+
+  free(p_au_kw_net)+
+  plot_layout(design = "
+              AB
+              CC
+              CC")
+
+ggsave("../figure/Fig4.pdf", p4, width = 175, height = 235, unit = "mm")
+```
+
+
+```{r}
+
+```
+

@@ -1,0 +1,312 @@
+---
+title: "MAFLD"
+output: html_document
+date: "2024-06-17"
+---
+
+```{r}
+library(bibliometrix)
+library(tidyverse)
+library(janitor)
+library(countrycode)
+library(openxlsx)
+library(patchwork)
+```
+
+```{r}
+df_cc <- readRDS("../wos/df/df_cc")
+```
+
+```{r}
+df_au <- df_cc %>%
+  distinct(UI, .keep_all = TRUE)
+```
+
+
+```{r}
+df_au <- df_au %>%
+  mutate(AU_ori = AU) %>%
+  mutate(AU_full_chr = AU_full)
+```
+
+
+```{r}
+df_au_long <- df_au %>%
+  separate_longer_delim(AU_full_chr, delim = ";") %>%
+  mutate(AU = str_trim(AU_full_chr, side = "both"))
+```
+
+
+```{r}
+df_au_long %>% count(AU) %>%
+  slice_max(n, n = 25) %>%
+  ggplot(aes(n, fct_reorder(AU, n)))+
+  geom_col(width = 0.7, fill = "#377eb8")+
+  scale_x_continuous(expand = c(0, 0),
+                     limits = c(0, 40),
+                     breaks = seq(0, 40, 10))+
+  labs(x = "Publication count", y = "Author")+
+  theme_classic()+
+  theme(plot.tag = element_text(size = 12, face="bold"),
+        title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.text.y = element_text(size = 8, colour = "black"),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        legend.title = element_text(size = 8, colour = "black", face = "bold"),
+        legend.text = element_text(size = 8, colour = "black"),
+        plot.margin = unit(c(0,5,0,0), "mm"))
+```
+
+```{r}
+# try getting the country for each author
+
+check_cc <- function(x){
+  
+  au_plain <- x %>% str_remove_all("\\,|\\.")
+  
+  
+  au_cc <- df_cc %>% 
+    mutate(AU_full = str_remove_all(AU_full, "\\.|\\,")) %>%
+    distinct(UI, CN, .keep_all = TRUE) %>%
+    ungroup() %>%
+    group_by(UI) %>%
+    mutate(CN_n = n()) %>%
+    ungroup() %>%
+    filter(str_detect(AU_full, au_plain)) %>%
+    filter(CN_n == 1) %>%
+    pull(CC) %>%
+    unique() %>%
+    return()
+  
+  df <- tibble(AU = x, CC = au_cc)
+  return(df)
+}
+```
+
+```{r}
+au_top <- df_au_long %>% count(AU) %>%
+  slice_max(n, n = 50) %>% pull(AU) #%>%
+ # str_remove_all("\\.|\\,")
+
+au_top 
+```
+
+```{r}
+#df_au_long %>% count(AU) %>%
+#  slice_max(n, n = 50) %>%
+#  write.xlsx("top_author.xlsx")
+```
+
+
+```{r}
+check_cc(au_top[1])
+```
+
+```{r}
+df_cc_check <- map(au_top, check_cc) %>% list_rbind()
+
+df_cc_check
+```
+```{r}
+df_cc_check %>% View()
+```
+
+
+
+```{r}
+df_cc %>%
+  distinct(UI, CC, .keep_all = TRUE) %>%
+  filter(UI %in% (df_au_long %>% filter(AU == "Alqahtani, Saleh A.") %>% pull(UI))) %>% 
+  group_by(UI) %>%
+  mutate(cc_n = n()) %>%
+  ungroup() %>%
+  count(cc_n)
+```
+
+
+```{r}
+df_cc %>%
+  filter(UI %in% (df_au_long %>% filter(AU == "Alqahtani, Saleh A.") %>% pull(UI))) %>% 
+  pull(PMID) %>% unique() 
+```
+
+
+```{r}
+df_cc %>%
+  filter(UI %in% (df_au_long %>% filter(AU == "Abd El-Aty, A. M.") %>% pull(UI))) %>% 
+  group_by(UI) %>%
+  mutate(cc_n = n()) %>%
+  ungroup() %>%
+  count(cc_n)
+```
+
+```{r}
+df_cc %>%
+  filter(UI %in% (df_au_long %>% filter(AU == "Abd El-Aty, A. M.") %>% pull(UI))) %>% 
+  pull(PMID)
+```
+
+```{r}
+df_cc %>%
+  filter(UI %in% (df_au_long %>% filter(AU == "Abd El-Aty, A. M.") %>% pull(UI))) %>% 
+  pull(PMID)
+```
+
+```{r}
+df_au_long %>%
+  filter(UI %in% (df_au_long %>% filter(AU == "Butler, Alexandra E.") %>% pull(UI))) %>% 
+  pull(PMID) %>% unique()
+```
+
+```{r}
+df_au_long %>%
+  filter(UI %in% (df_au_long %>% filter(AU == "Ahmed, Mohamed H.") %>% pull(UI))) %>% 
+  pull(PMID) %>% unique()
+```
+
+```{r}
+df_au_long %>%
+  filter(UI %in% (df_au_long %>% filter(AU == "Alswat, Khalid") %>% pull(UI))) %>% 
+  pull(PMID) %>% unique()
+```
+
+
+```{r}
+df_au_long %>%
+  filter(UI %in% (df_au_long %>% filter(AU == "Alswat, Khalid A.") %>% pull(UI))) %>% 
+  pull(PMID) %>% unique()
+```
+```{r}
+df_au_long %>%
+  filter(UI %in% (df_au_long %>% filter(AU == "El-Kassas, Mohamed") %>% pull(UI))) %>% 
+  pull(PMID) %>% unique()
+```
+```{r}
+df_au_long %>%
+  filter(UI %in% (df_au_long %>% filter(AU == "El Kassas, Mohamed") %>% pull(UI))) %>% 
+  pull(PMID) %>% unique()
+```
+
+```{r}
+df_au_long %>%
+  filter(UI %in% (df_au_long %>% filter(AU == "Matboli, Marwa") %>% pull(UI))) %>% 
+  pull(PMID) %>% unique()
+```
+
+```{r}
+df_cc_au <- df_cc_check %>%
+  bind_rows(tibble(AU = c("Alqahtani, Saleh A.",
+                          "Abd El-Aty, A. M.",
+                          "Butler, Alexandra E."),
+                   CC = c("Saudi Arabia",
+                          "Egypt",
+                          "Bahrain"))) %>%
+  rename(AU_cc = "CC")
+
+df_cc_au
+```
+
+
+```{r}
+# no manual formatting for potentially different authors
+
+#p3_b <- 
+  df_au_long %>% count(AU) %>%
+  filter(n >= 10) %>%
+
+  ggplot(aes(n, fct_reorder(AU, n)))+
+  geom_col(width = 0.7, fill = "#377eb8")+
+  scale_x_continuous(expand = c(0, 0),
+                     limits = c(0, 40),
+                     breaks = seq(0, 40, 10))+
+  labs(x = "Publication count", y = "Author")+
+  theme_classic()+
+  theme(plot.tag = element_text(size = 12, face="bold"),
+        title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.text = element_text(size = 8, colour = "black"),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        legend.title = element_text(size = 8, colour = "black", face = "bold"),
+        legend.text = element_text(size = 8, colour = "black"),
+        plot.margin = unit(c(0,5,0,0), "mm"))
+
+#p3_b
+```
+
+```{r}
+
+```
+
+
+```{r}
+#p1_a <- p1_a+plot_layout()
+
+#ggsave(filename = "../figure/author_all.pdf",
+#       p1_a,
+#       width = 100, height = 200, unit = "mm")
+```
+
+
+```{r}
+#au_arab <- c("Fouad, Yasser",
+#             "Alqahtani, Saleh A.",
+##             "Alswat, Khalid",        
+#             "El-Kassas, Mohamed",    
+#             "Shiha, Gamal",
+#             "Abd El-Aty, A. M.",
+#             "Attia, Dina",
+#            "Abd-Elsalam, Sherief",
+#            "Esmat, Gamal",
+#            "Alboraie, Mohamed")
+
+# Fouad, Yasser	Egypt			
+# Alswat, Khalid	Saudi Arabia			
+# El-Kassas, Mohamed	Egypt			
+# Shiha, Gamal	Egypt			
+# Attia, Dina	Egypt			
+# Abd-Elsalam, Sherief	Egypt			
+# Esmat, Gamal	Egypt			
+# Alboraie, Mohamed	Egypt			
+# El Kassas, Mohamed	Egypt			
+# Matboli, Marwa	Egypt
+```
+
+```{r}
+p_author_arab <- df_au_long %>% count(AU) %>%
+  filter(n >= 10) %>%
+  filter(AU %in% df_cc_au$AU) %>%
+  left_join(df_cc_au, by = join_by(AU)) %>%
+  mutate(y_label = paste0(AU, " (", AU_cc, ")" )) %>%
+  ggplot(aes(n, fct_reorder(y_label, n)))+
+  geom_col(width = 0.6, fill = "#377eb8")+
+  scale_x_continuous(expand = c(0, 0),
+                     limits = c(0, 40),
+                     breaks = seq(0, 40, 10))+
+  labs(x = "Publication count", y = "Author", tag = "B")+
+  theme_classic()+
+  theme(plot.tag = element_text(size = 12, face="bold"),
+        title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.text = element_text(size = 8, colour = "black"),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        plot.margin = unit(c(0,5,0,0), "mm"))
+
+p_author_arab
+```
+```{r}
+saveRDS(p_author_arab, "../plot/p_author_arab")
+```
+
+
+
+```{r}
+#p1_b <- p1_b+plot_layout()
+
+#ggsave(filename = "../figure/author_arab.pdf",
+#       p1_b,
+#       width = 100, height = 75, unit = "mm")
+```
+

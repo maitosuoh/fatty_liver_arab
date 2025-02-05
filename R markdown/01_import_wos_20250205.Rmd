@@ -1,0 +1,59 @@
+---
+title: "MAFLD"
+output: html_document
+date: "2024-06-17"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(readxl)
+```
+
+
+```{r}
+data_name <- list.files("../wos/xls")
+data_name
+```
+
+```{r}
+data_path <- paste0("../wos/xls/", data_name)
+data_path
+```
+
+```{r}
+data_num <- str_c("wos_", data_name %>% str_extract("^[:digit:]{2}(?=\\_)"))
+
+data_num
+```
+
+```{r}
+save_path <- paste0("../wos/rds/", data_num)
+save_path
+```
+
+```{r}
+import_wos <- function(data_path, save_path){
+  read_excel(data_path) %>% 
+    mutate(across(everything(), ~ as.character(.x))) %>%
+    saveRDS(save_path)
+}
+```
+
+```{r}
+dir.create("../wos/rds", showWarnings = TRUE, recursive = FALSE, mode = "0777")
+```
+
+
+```{r}
+for (i in 1:length(data_path)){
+  import_wos(data_path[i], save_path[i])
+  print(paste(data_num[i], "completed"))
+}
+```
+
+
+

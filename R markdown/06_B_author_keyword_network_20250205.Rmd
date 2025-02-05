@@ -1,0 +1,248 @@
+---
+title: "MAFLD"
+output: html_document
+date: "2024-06-17"
+---
+
+```{r}
+library(bibliometrix)
+library(tidyverse)
+library(janitor)
+library(countrycode)
+
+library(igraph)
+library(tidygraph)
+library(ggraph)
+```
+
+
+```{r}
+df_ak_long <- readRDS("../wos/df/df_ak_long")
+```
+
+
+```{r}
+df_ak_long %>% filter(str_detect(AK, "covid")) %>% count(AK)
+```
+
+
+```{r}
+df_ak_long %>%
+    group_by(UI) %>%
+    distinct(AK) %>%
+  ungroup() %>%
+  count(AK) %>%
+  arrange(desc(n)) %>%
+  View()
+```
+
+```{r}
+ak_10 <- df_ak_long %>%
+    group_by(UI) %>%
+    distinct(AK) %>%
+  ungroup() %>%
+  count(AK) %>%
+  filter(n >= 10) %>%
+  pull(AK)
+  
+#  slice_max(n, n = 70) %>%
+#  pull(AK)
+```
+
+
+
+```{r}
+mat_ak <- df_ak_long %>%
+    group_by(UI) %>%
+    distinct(AK) %>%
+    filter(AK %in% ak_10) %>%
+    ungroup() %>%
+    mutate(n = 1) %>%
+    arrange(AK) %>%
+    pivot_wider(names_from = UI, values_from = n) %>%
+    column_to_rownames(var = "AK") %>%
+    mutate(across(everything(), ~ replace_na(.x, 0))) %>%
+    as.matrix()
+```
+
+
+```{r}
+# function for obtaining co-occurrence matrix
+full_count <- function(A){
+  U <- A %*% t(A)
+  diag(U) <- 0
+  return(U)
+}
+```
+
+
+```{r}
+# calculate adjacency matrix
+adjm_ak_full <- full_count(mat_ak)
+```
+
+
+```{r}
+gr_ak_full <- adjm_ak_full %>% graph_from_adjacency_matrix(
+                                                           mode = "undirected",
+                                                           weighted = TRUE,
+                                                           diag = FALSE,
+                                                           add.colnames = NULL,
+                                                           add.rownames = NA)
+```
+
+
+```{r}
+# convert igraph object into tidygraph
+tbl_gr_ak_full <- as_tbl_graph(gr_ak_full)
+```
+
+
+```{r}
+# check for isolated nodes
+tbl_gr_ak_full %>%
+  activate(nodes) %>%
+  mutate(isolated = node_is_isolated()) %>%
+  as_tibble() %>%
+  filter(isolated == TRUE)
+```
+
+```{r}
+# remove isolated
+tbl_gr_ak_full <- tbl_gr_ak_full %>%
+  activate(nodes) %>%
+  mutate(isolated = node_is_isolated()) %>%
+  filter(isolated == FALSE)
+```
+
+
+```{r}
+# check for nodes with zero degree
+tbl_gr_ak_full %>%
+  activate(nodes) %>%
+  mutate(degree = centrality_degree(weights = weight)) %>%
+  filter(degree == 0) %>%
+  as_tibble()
+# 0
+```
+
+
+```{r}
+# remove unconnected nodes (degree = 0)
+tbl_gr_ak_full <- tbl_gr_ak_full %>%
+  activate(nodes) %>%
+  mutate(degree = centrality_degree(weights = weight))
+```
+
+```{r}
+# count the total number of publications in co-citation network
+tbl_gr_ak_full %>% activate(nodes) %>% as_tibble() %>% nrow()
+# 108
+```
+
+```{r}
+tbl_gr_ak_full %>% activate(nodes) %>% as_tibble() %>%
+  arrange(desc(degree)) %>% View()
+```
+
+
+
+```{r}
+# detect communities by Leiden algorithem, optimise modularity
+set.seed(15)
+tbl_gr_ak_full <- tbl_gr_ak_full %>%
+  mutate(group = as.character(group_leiden(weights = weight,
+                                           objective_function = "modularity")))
+```
+
+
+
+```{r}
+# check modularity
+tbl_gr_ak_full %>%
+  activate(nodes) %>%
+  mutate(modularity = graph_modularity(group=as.factor(group), weights = weight)) %>% 
+  pull(modularity) %>% 
+  head(1)
+```
+
+```{r}
+# check publication counts in each group
+tbl_gr_ak_full %>%
+  activate(nodes) %>%
+  as_tibble() %>%
+  count(group) %>%
+  arrange(desc(n))
+```
+
+```{r}
+tbl_gr_ak_full %>%
+  activate(nodes) %>%
+  as_tibble() %>%
+  View()
+```
+
+
+```{r}
+set.seed(15)
+
+p_au_kw_net <- tbl_gr_ak_full %>%
+  activate(nodes) %>%
+  mutate(group = case_when(group == "1" ~ "A",
+                           group == "4" ~ "B",
+                           group == "2" ~ "C",
+                           group == "3" ~ "D")) %>%
+  mutate(name = str_to_sentence(name)) %>%
+  mutate(name = case_when(name == "Nafld" ~ "NAFLD",
+                          name == "Nash" ~ "NASH",
+                          name == "Mafld" ~ "MAFLD",
+                          name == "Masld" ~ "MASLD",
+                          name == "Mash" ~ "MASH",
+                          name == "Covid-19" ~ "COVID-19",
+                          name == "Saudi arabia" ~ "Saudi Arabia",
+                          name == "Ampk" ~ "AMPK",
+                          name == "Er stress" ~ "ER stress",
+                          name == "Tnf-alpha" ~ "TNF-alpha",
+                          name == "Vitamin d" ~ "Vitamin D",
+                          name == "Hepatitis c virus" ~ "Hepatitis C virus",
+                          name == "Alt" ~ "Alanine aminotransferase",
+                          .default = name
+                          )) %>%
+  mutate(group = as.factor(group)) %>%
+  ggraph("fr") +
+  geom_edge_link(width = 0.3, alpha = 0.3, colour = "gray65")+
+#  scale_edge_colour_manual(values =  c("#377eb8", "#ff7f00", "#4daf4a", "#377eb8", "#e41a1c", "#984ea3"),
+#                           guide = "none")+
+  
+  geom_node_point(aes(size = degree), fill = "white", colour = "white", shape = 21, stroke = 0.6)+
+  geom_node_point(aes(fill = group, size = degree), colour = "gray35", shape = 21, stroke = 0.3)+
+  scale_size(range = c(1.5, 4), guide = "none")+
+  scale_fill_manual(values = c("#377eb8", "#ff7f00", "#e41a1c","#4daf4a" ),
+                    name = "Keyword group")+
+  scale_colour_manual(values = c("#377eb8", "#ff7f00", "#e41a1c","#4daf4a"))+
+  geom_node_text(aes(label = name), repel = TRUE, size = 2.8)+
+  guides(fill = guide_legend(override.aes = list(size = 2.8, alpha = 1),
+                               title.position = "top"),
+         colour = "none")+
+  labs(tag = "C")+
+  theme_void()+
+  theme(legend.position = "bottom",
+        plot.tag = element_text(size = 12, face="bold"),
+        legend.title=element_text(size=8, face = "bold", hjust = 0.5), 
+        legend.text=element_text(size = 8),
+        legend.key.size = unit(0.1, 'lines'),
+        plot.margin = unit(c(0,0,0,0), "mm"))
+
+
+```
+
+```{r}
+ggsave("keyword_network.pdf", p_au_kw_net , width = 175, height = 175, units = "mm")
+```
+
+
+
+```{r}
+saveRDS(p_au_kw_net, "../plot/p_au_kw_net")
+```
+

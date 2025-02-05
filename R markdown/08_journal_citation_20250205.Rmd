@@ -1,0 +1,448 @@
+---
+title: "MAFLD"
+output: html_document
+date: "2024-06-17"
+---
+
+```{r}
+library(bibliometrix)
+library(tidyverse)
+library(janitor)
+library(countrycode)
+```
+
+
+```{r}
+df_cc <- readRDS("../wos/df/df_cc")
+```
+
+
+```{r}
+df_sci <- read_delim("../scimago/scimagojr 2023.csv")
+```
+
+```{r}
+df_ci <- df_cc %>%
+  distinct(UI, .keep_all = TRUE)
+```
+
+```{r}
+colnames(df_ci)
+```
+
+
+```{r}
+# journal
+
+#p1_a <- 
+df_ci %>% count(ST) %>%
+  mutate(ST = str_to_title(ST)) %>%
+  mutate(ST = str_replace(ST, " Of ", " of ")) %>%
+  mutate(ST = str_replace(ST, " In ", " in ")) %>%
+  mutate(ST = str_replace(ST, " And ", " and ")) %>%
+  slice_max(n, n = 10) %>%
+  mutate(ST = str_remove(ST, "\\-.+$")) %>%
+  mutate(ST = case_when(ST == "European Journal of Gastroenterology & Hepatology" ~ "European Journal of\nGastroenterology & Hepatology",
+                        
+                        .default = ST)) %>%
+  ggplot(aes(n, fct_reorder(ST, n))) +
+  geom_col(width = 0.6, fill = "#a65628")+
+  labs(x = "Publication count",
+       y = "Journal")+
+  scale_x_continuous(expand = c(0, 0),
+                     breaks = seq(0, 40, 10),
+                     limits = c(0, 40))+
+  theme_classic()+
+  theme(plot.tag = element_text(size = 12, face="bold"),
+        title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.text = element_text(size = 8, colour = "black"),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        legend.title = element_text(size = 8, colour = "black", face = "bold"),
+        legend.text = element_text(size = 8, colour = "black"),
+        plot.margin = unit(c(0,5,0,0), "mm"))
+
+#p1_a
+```
+
+
+
+```{r}
+#p1_a <- p1_a+plot_layout()#
+
+#ggsave(filename = "../figure/journal.pdf",
+#       p1_a,
+#       width = 100, height = 100, unit = "mm")
+```
+
+
+# join scimago
+
+```{r}
+df_sci <- df_sci %>% clean_names()
+```
+
+```{r}
+df_sci_long <- df_sci %>% filter(!is.na(issn)) %>%
+  separate_longer_delim(issn, delim = ",") %>%
+  mutate(issn = str_trim(issn, side = "both"))
+```
+
+```{r}
+df_sci_long %>% filter(is.na(issn) | issn == "") %>% nrow()
+```
+
+```{r}
+df_jr_10 <- df_ci %>%
+  count(ST) %>%
+  slice_max(n, n = 10)
+
+df_jr_10
+```
+
+
+```{r}
+jr_10 <- df_jr_10 %>% pull(ST) 
+
+jr_10
+```
+
+```{r}
+df_jr_10_issn <- df_ci %>% filter(ST %in% jr_10) %>% select(ST, starts_with("ISSN")) %>%
+  distinct( .keep_all = TRUE)
+
+```
+
+```{r}
+df_jr_10_issn %>% View()
+```
+
+```{r}
+df_jr_10_join <- df_jr_10 %>%
+  left_join(df_jr_10_issn %>%
+              filter(!is.na(ISSN)) %>%
+              select(ST, ISSN) %>%
+              distinct(ST, ISSN, .keep_all = TRUE),
+            by = join_by(ST))
+
+```
+
+```{r}
+df_jr_10_join
+```
+
+
+```{r}
+df_jr_10_join <- df_jr_10_join %>%
+  left_join(df_jr_10_issn %>%
+              filter(!is.na(ISSN_e)) %>%
+              select(ST, ISSN_e) %>%
+              distinct(ST, ISSN_e, .keep_all = TRUE),
+            by = join_by(ST))
+
+```
+
+```{r}
+df_jr_10_join  <- df_jr_10_join %>%
+  mutate(across(starts_with("ISSN"), ~ str_remove_all(.x, "-")))
+```
+
+
+```{r}
+df_jr_10_join
+```
+
+```{r}
+# join by ISSN
+df_jr_10_sci <- df_jr_10_join %>%
+  left_join(df_sci_long %>%
+              rename(sjr_q = "sjr_best_quartile") %>%
+              select(title, issn, sjr_q),
+            by = join_by(ISSN == issn))
+```
+
+
+```{r}
+# join by ISSN_e
+
+df_jr_10_sci <- df_jr_10_sci  %>%
+  left_join(df_sci_long %>% 
+              rename(sjr_q = "sjr_best_quartile") %>%
+              select(title, issn, sjr_q),
+            by = join_by(ISSN_e == issn),
+            suffix = c("", "_e"))
+```
+
+
+```{r}
+df_jr_10_sci
+```
+
+```{r}
+df_jr_10_sci %>% filter(sjr_q != sjr_q_e)
+```
+
+```{r}
+df_jr_10_sci <- df_jr_10_sci %>%
+  mutate(sjr_q = replace_na(sjr_q, "NA"))
+```
+
+```{r}
+df_jr_10_sci <- df_jr_10_sci %>%
+  mutate(ST = str_to_title(ST)) %>%
+  mutate(ST = str_replace(ST, " Of ", " of ")) %>%
+  mutate(ST = str_replace(ST, " In ", " in ")) %>%
+  mutate(ST = str_replace(ST, " And ", " and ")) %>%
+  mutate(ST_q = paste0(ST, " (", sjr_q, ")" ))
+
+df_jr_10_sci 
+```
+
+```{r}
+p_jr <- df_jr_10_sci %>%
+  mutate(ST_q = case_when(ST_q == "European Journal of Gastroenterology & Hepatology (Q2)" ~ "European Journal of\nGastroenterology & Hepatology (Q2)",
+                        .default = ST_q)) %>%
+  ggplot(aes(n, fct_reorder(ST_q, n))) +
+  geom_col(width = 0.6, fill = "#a65628")+
+  labs(x = "Publication count",
+       y = "Journal",
+       tag = "C")+
+  scale_x_continuous(expand = c(0, 0),
+                     breaks = seq(0, 40, 10),
+                     limits = c(0, 40))+
+  theme_classic()+
+  theme(plot.tag = element_text(size = 12, face="bold"),
+        title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.text = element_text(size = 8, colour = "black"),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        legend.title = element_text(size = 8, colour = "black", face = "bold"),
+        legend.text = element_text(size = 8, colour = "black"),
+        plot.margin = unit(c(0,5,0,0), "mm"))
+
+p_jr 
+```
+
+```{r}
+saveRDS(p_jr , "../plot/p_jr")
+```
+
+
+```{r}
+# citation
+
+df_ci %>% 
+  mutate(TC_wos = as.numeric(TC_wos)) %>%
+  slice_max(TC_wos, n = 20) %>% select(PN, TI, PMID, TC_wos) %>%
+  arrange(desc(TC_wos)) %>% View()
+```
+
+```{r}
+# check same title
+
+df_ci %>% 
+  mutate(TC_wos = as.numeric(TC_wos)) %>%
+  slice_max(TC_wos, n = 20) %>% select(PN, TI, PMID, TC_wos) %>%
+  group_by(PN) %>%
+  filter(n()>1)
+
+```
+
+
+
+```{r}
+# check same title
+
+df_ci %>% 
+  mutate(TC_wos = as.numeric(TC_wos)) %>%
+  slice_max(TC_wos, n = 20) %>% select(PN, TI, PMID, TC_wos) %>%
+  group_by(TI) %>%
+  filter(n()>1)
+
+```
+
+
+```{r}
+# citation TC_wos
+
+#p2_a <- 
+df_ci %>% 
+  mutate(TC_wos = as.numeric(TC_wos)) %>%
+  slice_max(TC_wos, n = 20) %>%
+  mutate(PN = case_when(PMID == "32278004" ~ paste(PN, "[a]"),
+                        PMID == "33006093" ~ paste(PN, "[b]"),
+                        .default = PN)) %>%
+  
+  mutate(PN = case_when(PMID == "37364790" ~ paste(PN, "[a]"),
+                        PMID == "37363821" ~ paste(PN, "[b]"),
+                        PMID == "37364816" ~ paste(PN, "[c]"),
+                        .default = PN)) %>%
+  ggplot(aes(TC_wos, fct_reorder(PN, TC_wos))) +
+  geom_col(width = 0.7, fill = "#4daf4a", alpha = 0.5)+
+  geom_text(aes(x = 3000/50,  label = TI, hjust = 0), size = 2.8) +
+  scale_x_continuous(expand = c(0, 0),
+                     breaks = seq(0, 3000, 500),
+                     limits = c(0, 3000))+
+  labs(x = "Times cited (Web of Science)", y = "Publication")+
+  theme_classic()+
+   theme(plot.tag = element_text(size = 12, face="bold"),
+        title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.text = element_text(size = 8, colour = "black"),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        legend.title = element_text(size = 8, colour = "black", face = "bold"),
+        legend.text = element_text(size = 8, colour = "black"),
+        plot.margin = unit(c(0,5,0,0), "mm"))
+
+#p2_a
+```
+
+```{r}
+#p2_a <- p2_a +plot_layout()
+
+#ggsave(filename = "../figure/citation_pub_wos.pdf",
+#       p2_a,
+#       width = 175, height = 100, unit = "mm")
+```
+
+
+```{r}
+#p2_b <- 
+  df_ci %>% 
+  mutate(TC_all = as.numeric(TC_all)) %>%
+  slice_max(TC_all, n = 20) %>%
+  mutate(PN = case_when(PMID == "32278004" ~ paste(PN, "[a]"),
+                        PMID == "33006093" ~ paste(PN, "[b]"),
+                        .default = PN)) %>%
+  
+  mutate(PN = case_when(PMID == "37364790" ~ paste(PN, "[a]"),
+                        PMID == "37363821" ~ paste(PN, "[b]"),
+                        PMID == "37364816" ~ paste(PN, "[c]"),
+                        .default = PN)) %>%
+  ggplot(aes(TC_all, fct_reorder(PN, TC_all))) +
+  geom_col(width = 0.7, fill = "#ff7f00", alpha = 0.5)+
+  geom_text(aes(x = 3000/50,  label = TI, hjust = 0), size = 2.8, vjust = 0.5) +
+  scale_x_continuous(expand = c(0, 0),
+                     breaks = seq(0, 3000, 500),
+                     limits = c(0, 3000))+
+  labs(x = "Cited times (Total)", y = "Publication")+
+  theme_classic()+
+   theme(plot.tag = element_text(size = 12, face="bold"),
+        title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.text = element_text(size = 8, colour = "black"),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        legend.title = element_text(size = 8, colour = "black", face = "bold"),
+        legend.text = element_text(size = 8, colour = "black"),
+        plot.margin = unit(c(0,5,0,0), "mm"))
+
+#p2_b
+```
+
+```{r}
+#p2_b <- p2_b +plot_layout()
+
+#ggsave(filename = "../figure/citation_pub_total.pdf",
+#       p2_b,
+#       width = 175, height = 100, unit = "mm")
+```
+
+
+```{r}
+cc_arab <- c("Algeria", "Bahrain", "Comoros", "Djibouti", "Egypt", 
+             "Iraq", "Jordan", "Kuwait","Lebanon", "Libya", 
+             "Mauritania", "Morocco", "Oman", "Palestine", "Qatar",
+             "Saudi Arabia", "Somalia", "Sudan", "Syria", "Tunisia",
+             "UAE", "Yemen")
+```
+
+
+```{r}
+df_ci_arab <- df_cc %>%
+  distinct(UI, CC, .keep_all = TRUE) %>%
+  filter(CC %in% cc_arab)
+```
+
+```{r}
+df_ci_arab %>% distinct(UI) %>% nrow()
+```
+
+```{r}
+#p3_a <- 
+df_ci_arab %>%
+  mutate(TC_wos = as.numeric(TC_wos)) %>%
+  group_by(CC) %>%
+  summarise(SUM = sum(TC_wos)) %>%
+  ggplot(aes(SUM, fct_reorder(CC, SUM)))+
+  geom_col(width = 0.7, fill = "#4daf4a")+
+  geom_text(aes(x = SUM + 100,  label = SUM, hjust = 0), size = 2.8, vjust = 0.5) +
+  scale_x_continuous(expand = c(0, 0),
+                     breaks = seq(0, 20000, 5000),
+                     limits = c(0, 20000))+
+  coord_cartesian(clip = "off")+
+  labs(x = "Cited times (Total)", y = "Publication", tag = "c")+
+  theme_classic()+
+  theme(plot.tag = element_text(size = 12, face="bold", colour = "black"),
+        title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.text = element_text(size = 8, colour = "black"),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        legend.title = element_text(size = 8, colour = "black", face = "bold"),
+        legend.text = element_text(size = 8, colour = "black"),
+        plot.margin = unit(c(0,5,0,0), "mm"))
+```
+
+
+```{r}
+#p3_a <- p3_a +plot_layout()
+
+#ggsave(filename = "../figure/citation_arab_wos.pdf",
+ #      p3_a,
+#       width = 100, height = 100, unit = "mm")
+```
+
+```{r}
+#p3_b <- 
+p_cite_arab <- df_ci_arab %>%
+  mutate(TC_all = as.numeric(TC_all)) %>%
+  group_by(CC) %>%
+  summarise(SUM = sum(TC_all)) %>%
+  ggplot(aes(SUM, fct_reorder(CC, SUM)))+
+  geom_col(width = 0.6, fill = "#4daf4a")+
+  geom_text(aes(x = SUM + 100,  label = SUM, hjust = 0), size = 2.8, vjust = 0.5) +
+  scale_x_continuous(expand = c(0, 0),
+                     breaks = seq(0, 20000, 5000),
+                     limits = c(0, 20000))+
+  coord_cartesian(clip = "off")+
+  labs(x = "Cited times (total)", y = "Country", tag = "C")+
+  theme_classic()+
+  theme(plot.tag = element_text(size = 12, face="bold"),
+        title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.text = element_text(size = 8, colour = "black"),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        legend.title = element_text(size = 8, colour = "black", face = "bold"),
+        legend.text = element_text(size = 8, colour = "black"),
+        plot.margin = unit(c(0,5,0,0), "mm"))
+
+p_cite_arab
+```
+
+```{r}
+saveRDS(p_cite_arab, "../plot/p_cite_arab")
+```
+
+```{r}
+#p3_b <- p3_b+plot_layout()
+
+#ggsave(filename = "../figure/citation_arab_total.pdf",
+#       p3_b,
+#       width = 100, height = 100, unit = "mm")
+```
+

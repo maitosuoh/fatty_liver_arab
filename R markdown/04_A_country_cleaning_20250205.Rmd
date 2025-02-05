@@ -1,0 +1,273 @@
+---
+title: "MAFLD"
+output: html_document
+date: "2024-06-17"
+---
+
+```{r}
+library(bibliometrix)
+library(tidyverse)
+library(janitor)
+library(countrycode)
+```
+
+
+```{r}
+df_nmfs <- readRDS("../wos/df/df_nmfs")
+```
+
+```{r}
+df_wos <- readRDS("../wos/df/df_wos")
+```
+
+```{r}
+colnames(df_nmfs)
+```
+
+```{r}
+# extract author from AD
+
+df_ad <- df_nmfs %>% 
+  mutate(AD_au = str_extract_all(AD, "(?<=\\[)[^\\]]+(?=\\])"))
+```
+
+```{r}
+# extract affiliation from AD
+
+df_ad <- df_ad %>%
+  mutate(AD_chr = str_remove_all(AD, "\\[[^\\]]+\\]")) %>%
+  mutate(AD_chr = str_trim(AD_chr, side = "both"))
+```
+
+```{r}
+df_ad_long <- df_ad %>%
+  separate_longer_delim(AD_chr, ";") %>%
+  mutate(AD_chr = str_trim(AD_chr, side = "both"))
+```
+
+
+```{r}
+# extract institue, assuming that it appears as the first element in AD_af
+# may not be consistently formated
+
+df_ad_long <- df_ad_long %>%
+  mutate(AD_in = str_extract(AD_chr, "^[^\\,]+(?=\\,\\s)")) %>%
+  mutate(AD_cn = str_extract(AD_chr, "(?<=\\,\\s)[^\\,]+$")) %>%
+  mutate(AD_in = str_trim(AD_in, side = "both")) %>%
+  mutate(AD_cn = str_trim(AD_cn, side = "both"))
+```
+
+
+```{r}
+df_ad_long %>% count(AD_in) %>% arrange(desc(n))
+```
+
+```{r}
+df_ad_long %>% count(AD_cn) %>% arrange(desc(n))
+```
+
+```{r}
+# clean USA
+df_ad_long <- df_ad_long %>%
+  mutate(AD_cn = case_when(str_detect(AD_cn, " USA") ~ "United States",
+                        .default = AD_cn))
+```
+
+```{r}
+df_ad_long %>% count(AD_cn)
+```
+
+```{r}
+# ignore this should be spain elsewhere
+df_ad_long %>% filter(is.na(AD_cn)) %>% select(UI, AD_cn, AD_chr)
+
+# Virgen del Rocio Univ Hospital Spain
+```
+
+```{r}
+df_ad_long %>% filter(is.na(AD_in)) %>% select(UI, AD_cn, AD_chr, AD_in)
+```
+
+
+```{r}
+df_ad_long <- df_ad_long %>%
+  mutate(AD_cn = case_when( UI == "WOS:001190815800001" & is.na(AD_cn) ~ "Spain",
+                        .default = AD_cn)) 
+```
+
+```{r}
+df_ad_long %>% filter(is.na(AD_in)) %>% select(UI, AD_cn, AD_chr, AD_in)
+```
+
+```{r}
+df_ad_long %>% filter(str_detect(AD_chr, "^\\,")) %>% select(UI, AD_cn, AD_chr, AD_in)
+```
+
+```{r}
+df_ad_long <- df_ad_long %>%
+  mutate(AD_in = case_when(is.na(AD_in) & !str_detect(AD_chr, "\\,") ~ AD_chr,
+                           is.na(AD_in) &  str_detect(AD_chr, "^\\,") ~ str_extract(AD_chr, "(?<=^\\,\\s)[^\\,]+(?=\\,)"),
+                           .default = AD_in))
+```
+
+```{r}
+df_ad_long %>% filter(UI == "WOS:001190815800001") %>% select(UI, AD_cn, AD_chr, AD_in)
+```
+
+# clean reprint addresses
+
+```{r}
+df_ra <- df_nmfs %>% mutate(RA_chr = RA)
+```
+
+
+```{r}
+df_ra_long <- df_ra  %>%
+  separate_longer_delim(RA_chr, delim = ";") %>%
+  mutate(RA_chr =str_trim(RA_chr, side = "both")) %>%
+  mutate(RA_chr = str_remove(RA_chr, "\\.$"))
+```
+
+```{r}
+df_ra_long  <- df_ra_long  %>%
+  mutate(RA_cn = str_extract(RA_chr, "(?<=\\,)[^\\,]+$")) %>%
+   mutate(RA_cn =str_trim(RA_cn, side = "both"))
+```
+
+```{r}
+df_ra_long <- df_ra_long %>%
+  mutate(RA_cn = case_when(str_detect(RA_cn, " USA") ~ "United States",
+                        .default = RA_cn))
+```
+
+
+```{r}
+df_ra_long %>%
+  count(RA_cn)
+```
+
+```{r}
+# remove capital letters up to three characters
+
+df_ra_long %>%
+  mutate(n_char = str_length(RA_cn)) %>%
+  select(RA_cn, n_char) %>%
+  arrange(n_char)
+```
+
+```{r}
+df_ra_long %>%
+  filter(str_detect(RA_cn, "^[:alpha:]{1,3}$")) %>% count(RA_cn)
+```
+
+```{r}
+df_ra_long <- df_ra_long %>%
+  filter(!str_detect(RA_cn, "^[:alpha:]{1,3}$"))
+```
+
+
+
+```{r}
+df_ra_long %>%
+  count(RA_cn)
+```
+
+```{r}
+df_cn_long <- df_ad_long %>%
+  bind_rows(df_ra_long)
+```
+
+```{r}
+colnames(df_cn_long)
+```
+
+```{r}
+df_cn_long %>% filter(!is.na(RA_cn)) %>% count(RA_cn)
+```
+
+
+```{r}
+df_cn_long <- df_cn_long %>%
+  pivot_longer(cols = c(AD_cn, RA_cn), names_to = "AD_RA", values_to = "CN")
+```
+
+```{r}
+df_cn_long <- df_cn_long %>% filter(!is.na(CN))
+```
+
+```{r}
+df_cn_long <- df_cn_long %>%
+  mutate(AD_RA = str_remove(AD_RA, "_\\.+"))
+```
+
+```{r}
+cn_arab <- c("Algeria", "Bahrain", "Comoros", "Djibouti", "Egypt", 
+             "Iraq", "Jordan", "Kuwait","Lebanon", "Libya", 
+             "Mauritania", "Morocco", "Oman", "Palestine", "Qatar",
+             "Saudi Arabia", "Somalia", "Sudan", "Syria", "Tunisia",
+             "U Arab Emirates", "Yemen")
+```
+
+```{r}
+df_cn_long %>%
+  filter(CN %in% cn_arab) %>% distinct(UI) %>% pull(UI) %>% length()
+```
+
+```{r}
+# check number of countries
+df_cn_long %>%
+  distinct(UI, CN, .keep_all = TRUE) %>%
+  ungroup() %>%
+  filter(CN %in% c(cn_arab)) %>%
+  count(CN) %>%
+  nrow()
+
+# check Somalia
+```
+
+```{r}
+cn_arab_df <- df_cn_long %>%
+  filter(CN %in% c(cn_arab)) %>%
+  pull(CN) %>%
+  unique()
+
+cn_arab_df 
+```
+
+```{r}
+# countries missing from the data
+setdiff(cn_arab, cn_arab_df)
+```
+
+
+```{r}
+# number of papers in arab countries
+df_cn_long %>% 
+  distinct(UI, CN, .keep_all = TRUE) %>%
+  filter(CN %in% cn_arab) %>%
+    count(CN) %>%
+  ggplot(aes(n, fct_reorder(CN, n)))+
+  geom_col()+
+  theme_classic()
+```
+
+```{r}
+# fractionated count
+df_cn_long %>%
+  distinct(UI, CN, .keep_all = TRUE) %>%
+  ungroup() %>%
+  group_by(UI) %>%
+  mutate(WT = 1/n()) %>%
+  filter(CN %in% c(cn_arab)) %>%
+  ungroup()%>%
+  group_by(CN) %>%
+  summarise(SUM = sum(WT)) %>%
+  ggplot(aes(SUM, fct_reorder(CN, SUM)))+
+  geom_col(width = 0.7)+
+  theme_classic()
+```
+
+```{r}
+saveRDS(df_cn_long, "../wos/df/df_cn_long")
+```
+

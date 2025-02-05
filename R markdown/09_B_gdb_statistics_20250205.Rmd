@@ -1,0 +1,253 @@
+---
+title: "MAFLD"
+output: html_document
+date: "2024-06-17"
+---
+
+```{r}
+library(bibliometrix)
+library(tidyverse)
+library(janitor)
+library(countrycode)
+library(readxl)
+library(pals)
+library(ggrepel)
+library(scales)
+library(patchwork)
+```
+
+
+```{r}
+df_cc <- readRDS("../wos/df/df_cc")
+```
+
+
+```{r}
+df_pop_long <- readRDS("../wos/df/df_pop_long")
+
+df_gdp_long <- readRDS("../wos/df/df_gdp_long")
+```
+
+
+```{r}
+cc_arab <- c("Algeria", "Bahrain", "Comoros", "Djibouti", "Egypt", 
+             "Iraq", "Jordan", "Kuwait","Lebanon", "Libya", 
+             "Mauritania", "Morocco", "Oman", "Palestine", "Qatar",
+             "Saudi Arabia", "Somalia", "Sudan", "Syria", "Tunisia",
+             "UAE", "Yemen")
+```
+
+```{r}
+iso3c_arab <- cc_arab %>% countrycode(origin = "country.name",
+                                         destination = "iso3c")
+
+iso3c_arab
+```
+```{r}
+df_pop_arab <- df_pop_long %>% filter(country_code %in% iso3c_arab)
+```
+
+
+```{r}
+df_gdp_arab <- df_gdp_long %>% filter(country_code %in% iso3c_arab)
+```
+
+```{r}
+df_n_arab <- df_cc %>%
+  distinct(UI, CC, .keep_all = TRUE) %>%
+  ungroup() %>%
+  filter(CC %in% cc_arab) %>%
+  group_by(PY) %>%
+  count(CC, ISO3C) %>%
+  ungroup()
+
+df_n_arab
+```
+
+```{r}
+df_n_arab <- df_n_arab %>%
+  mutate(ID = paste0(ISO3C, "_", PY))
+```
+
+```{r}
+df_pop_arab <- df_pop_arab %>%
+  mutate(ID = paste0(country_code, "_", YEAR))
+```
+
+```{r}
+df_gdp_arab <- df_gdp_arab %>%
+  mutate(ID = paste0(country_code, "_", YEAR))
+```
+
+```{r}
+df_n_arab <- df_n_arab %>%
+  left_join(df_pop_arab %>% select(ID, POP), by = join_by("ID")) %>%
+  left_join(df_gdp_arab %>% select(ID, GDP), by = join_by("ID"))
+```
+
+```{r}
+df_n_arab %>% distinct(CC) %>% nrow()
+```
+
+```{r}
+pal_alpha <- alphabet2(n = 18)
+
+pal_alpha
+```
+
+```{r}
+df_n_arab
+```
+
+```{r}
+df_n_arab %>% filter(n == max(n))
+```
+
+
+```{r}
+df_n_arab %>%
+  filter(!is.na(POP)) %>%
+  ggplot(aes(POP, n)) +
+  geom_point(aes(fill = factor(CC)),
+             shape = 21, colour = "black", alpha = 0.7, size = 3)+
+   scale_fill_manual(values = c("#AA0DFE", "#3283FE", "#85660D", "#782AB6", "#565656",
+                                 "#1C8356", "#16FF32", "#F7E1A0", "#E2E2E2", "#1CBE4F",
+                                 "#C4451C", "#DEA0FD", "#FE00FA", "#325A9B", "#FEAF16",
+                                 "#F8A19F", "#90AD1C", "#F6222E")) +
+  theme_classic()
+```
+
+```{r}
+df_n_arab %>%
+  filter(!is.na(POP)) %>%
+  ggplot(aes(POP, n)) +
+  geom_point(aes(fill = factor(CC)),
+             shape = 21, colour = "black", alpha = 0.7, size = 3)+
+   scale_fill_manual(values = c("#AA0DFE", "#3283FE", "#85660D", "#782AB6", "#565656",
+                                 "#1C8356", "#16FF32", "#F7E1A0", "#E2E2E2", "#1CBE4F",
+                                 "#C4451C", "#DEA0FD", "#FE00FA", "#325A9B", "#FEAF16",
+                                 "#F8A19F", "#90AD1C", "#F6222E")) +
+  ggrepel::geom_text_repel(aes(label = PY), size = 2.8)+
+  theme_classic()
+```
+
+
+```{r}
+df_n_arab %>%
+  mutate(ALPHA = as.numeric(PY)) %>%
+  mutate(ALPHA = (ALPHA-2006)/18 + 0.2)
+```
+
+
+```{r}
+p1_a <- df_n_arab %>%
+  filter(!is.na(POP)) %>%
+  mutate(ALPHA = as.numeric(PY)) %>%
+  mutate(ALPHA = (ALPHA-2006)/18 + 0.2) %>%
+  mutate(POP = POP/(1*10^6)) %>%
+  ggplot(aes(POP, n)) +
+  geom_point(aes(fill = factor(CC), alpha = ALPHA),
+             shape = 21, colour = "black", size = 2.5)+
+    ggrepel::geom_text_repel(aes(label = PY),
+                           size = 2.6,
+                           segment.size = 0.3)+
+   scale_fill_manual(values = c("#AA0DFE", "#3283FE", "#85660D", "#782AB6", "#565656",
+                                 "#1C8356", "#16FF32", "#F7E1A0", "#E2E2E2", "#1CBE4F",
+                                 "#C4451C", "#DEA0FD", "#FE00FA", "#325A9B", "#FEAF16",
+                                 "#F8A19F", "#90AD1C", "#F6222E"),
+                     name = "Country") +
+  scale_alpha(guide = "none")+
+    scale_x_continuous(limits = c(0, 120),
+                     breaks = seq(0, 120, 20))+
+      scale_y_continuous(limits = c(0, 120),
+                     breaks = seq(0, 120, 20))+
+  labs(x = "Population (million)", y = "Publication count",
+       tag = "A")+
+  theme_classic()+
+    theme(plot.tag = element_text(size = 12, colour = "black", face="bold"),
+        title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.text = element_text(size = 8, colour = "black"),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        legend.title = element_text(size = 8, colour = "black", face = "bold"),
+        plot.margin = unit(c(0,5,0,0), "mm"))
+p1_a
+```
+
+
+
+```{r}
+print(pal_alpha)
+```
+
+
+```{r}
+df_n_arab %>%
+  filter(!is.na(GDP)) %>%
+  ggplot(aes(GDP, n)) +
+  geom_point(aes(fill = factor(CC)),
+             shape = 21, colour = "black", alpha = 0.7, size = 3)+
+  scale_fill_manual(values = c("#AA0DFE", "#3283FE", "#85660D", "#782AB6", "#565656",
+                                 "#1C8356", "#16FF32", "#F7E1A0", "#E2E2E2", "#1CBE4F",
+                                 "#C4451C", "#DEA0FD", "#FE00FA", "#325A9B", "#FEAF16",
+                                 "#F8A19F", "#90AD1C", "#F6222E")) +
+  theme_classic() 
+#  scale_x_continuous(trans = "log1p")
+```
+
+```{r}
+p1_b <- df_n_arab %>%
+  filter(!is.na(GDP)) %>%
+  mutate(ALPHA = as.numeric(PY)) %>%
+  mutate(ALPHA = (ALPHA-2006)/18 + 0.2) %>%
+  mutate(GDP = GDP/(1*10^9)) %>%
+  ggplot(aes(GDP, n)) +
+  geom_point(aes(fill = factor(CC), alpha = ALPHA),
+             shape = 21, colour = "black",size = 2.5)+
+  scale_fill_manual(values = c("#AA0DFE", "#3283FE", "#85660D", "#782AB6", "#565656",
+                                 "#1C8356", "#16FF32", "#F7E1A0", "#E2E2E2", "#1CBE4F",
+                                 "#C4451C", "#DEA0FD", "#FE00FA", "#325A9B", "#FEAF16",
+                                 "#F8A19F", "#90AD1C", "#F6222E"),
+                    name = "Country") +
+  ggrepel::geom_text_repel(aes(label = PY),
+                           size = 2.6,
+                           segment.size = 0.3)+
+  scale_alpha(guide = "none")+
+  scale_x_continuous(limits = c(0, 1200),
+                     breaks = seq(0, 1200, 200))+
+  scale_y_continuous(limits = c(0, 120),
+                     breaks = seq(0, 120, 20))+
+  labs(x = "GDP (billion US$)", y = "Publication count",
+       tag = "B")+
+  theme_classic() +
+    theme(plot.tag = element_text(size = 12, colour = "black", face="bold"),
+        title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.title = element_text(size = 8, colour = "black", face = "bold"),
+        axis.text = element_text(size = 8, colour = "black"),
+        axis.line = element_line(linewidth = 0.3, colour = "black"),
+        axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+        legend.title = element_text(size = 8, colour = "black", face = "bold"),
+        plot.margin = unit(c(0,5,0,0), "mm"))
+
+p1_b
+```
+
+```{r}
+p1 <- p1_a + p1_b + plot_layout(nrow = 2, guides = "collect")+
+  theme(legend.position = "right")
+
+ggsave("../figure/Fig5.pdf", p1, width = 175, height = 235, unit = "mm")
+```
+
+
+```{r}
+pal_alpha <- alphabet(n = 18)
+
+pal_alpha
+```
+
+```{r}
+
+```
+

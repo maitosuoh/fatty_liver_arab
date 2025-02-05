@@ -1,0 +1,132 @@
+---
+title: "MAFLD"
+output: html_document
+date: "2024-06-17"
+---
+
+```{r}
+library(bibliometrix)
+library(tidyverse)
+library(janitor)
+library(countrycode)
+library(readxl)
+```
+
+
+```{r}
+df_cc <- readRDS("../wos/df/df_cc")
+```
+
+
+```{r}
+list.files("../wdb")
+```
+
+```{r}
+df_pop <- read_excel("../wdb/P_Popular Indicators_pop.xlsx")
+```
+
+```{r}
+df_pop <- df_pop %>% clean_names()
+```
+
+```{r}
+df_pop <- df_pop %>% select(! c(series_name, series_code))
+```
+
+```{r}
+df_pop <- df_pop %>% mutate(across(everything(), ~ as.character(.x)))
+```
+
+
+```{r}
+df_pop_long <- df_pop %>% pivot_longer(cols = !starts_with("country"),
+                                       names_to = "YEAR",
+                                       values_to = "POP")
+```
+
+```{r}
+# clean year column
+
+df_pop_long <- df_pop_long %>%
+  mutate(YEAR = str_extract(YEAR, "(?<=^x)[:digit:]{4}(?=_)"))
+```
+
+```{r}
+df_pop_long %>% filter(!str_detect(POP, "^[:digit:]+$"))
+```
+
+
+
+```{r}
+# clean POP (change .. to NA)
+
+df_pop_long <- df_pop_long %>%
+  mutate(POP = if_else(POP == "..", NA, POP))
+```
+
+```{r}
+# change POP to numeric
+df_pop_long <- df_pop_long %>%
+  mutate(POP = as.numeric(POP))
+```
+
+```{r}
+saveRDS(df_pop_long, "../wos/df/df_pop_long")
+```
+
+# gdp
+
+```{r}
+df_gdp <- read_excel("../wdb/P_Popular Indicators_gdp.xlsx")
+```
+
+```{r}
+df_gdp <- df_gdp %>% clean_names()
+```
+
+```{r}
+df_gdp <- df_gdp %>% select(! c(series_name, series_code))
+```
+
+```{r}
+df_gdp <- df_gdp %>% mutate(across(everything(), ~ as.character(.x)))
+```
+
+
+```{r}
+df_gdp_long <- df_gdp %>% pivot_longer(cols = !starts_with("country"),
+                                       names_to = "YEAR",
+                                       values_to = "GDP")
+```
+
+```{r}
+# clean year column
+
+df_gdp_long <- df_gdp_long %>%
+  mutate(YEAR = str_extract(YEAR, "(?<=^x)[:digit:]{4}(?=_)"))
+```
+
+```{r}
+df_gdp_long %>% filter(!str_detect(GDP, "^[:digit:]+$"))
+```
+
+
+
+```{r}
+# clean POP (change .. to NA)
+
+df_gdp_long <- df_gdp_long %>%
+  mutate(GDP = if_else(GDP == "..", NA, GDP))
+```
+
+```{r}
+# change POP to numeric
+df_gdp_long <- df_gdp_long %>%
+  mutate(GDP = as.numeric(GDP))
+```
+
+```{r}
+saveRDS(df_gdp_long, "../wos/df/df_gdp_long")
+```
+
